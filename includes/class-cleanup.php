@@ -10,15 +10,20 @@ defined('ABSPATH') || exit;
 
 /**
  * Acting on unreferenced media: the list itself, quarantine (files moved out of their public path; requests for
- * them are still answered and logged), restore, permanent delete, and "keep" for media used outside the site.
+ * them are still answered and logged, or answered 404 during a timed 404 test), restore, permanent delete, and "keep"
+ * for media used outside the site.
  * Attachments that share one file always move together. Nothing here touches media that has a reference.
  */
 final class Cleanup
 {
-    public const META = '_mtrk_quarantine'; // ['lead', 'time', 'files', 'hits' => [kind => n], 'last', 'from']
+    // ['lead', 'time', 'files', 'hits' => [kind => n], 'last', 'from', 'test' => n during a 404 test, 'pages' => last 5 referers]
+    public const META = '_mtrk_quarantine';
     public const KEEP = '_mtrk_keep';
+    public const TEST = 'mtrk_q_test';      // option: ['start' => time, 'until' => time] of the current or last 404 test
+    public const TEST_HOURS = [1, 6, 24, 72];
     private const MAP = 'mtrk_quarantine';  // option: upload-relative path => lead attachment id
     private const DIR = 'mtrk_quarantine_dir';
+    private const PAGES = 5;
     private const PROBE = 'mtrk-probe-';
     private const CHUNK = 2000;
 
@@ -230,7 +235,8 @@ final class Cleanup
 
     /**
      * Requests for missing upload files reach WordPress (nginx try_files / Apache rewrite). For a quarantined file,
-     * log the hit and answer it from quarantine so nothing breaks while you wait. Hooked very early.
+     * log the hit and answer it from quarantine so nothing breaks while you wait; during a 404 test, log it and
+     * answer 404 like a deleted file. Hooked very early: anything that is not a quarantined file leaves at match().
      */
     public static function serve(): void
     {
@@ -245,7 +251,17 @@ final class Cleanup
             return;
         }
         [$lead, $file] = $match;
-        self::hit($lead, esc_url_raw(wp_unslash((string) ($_SERVER['HTTP_REFERER'] ?? ''))), sanitize_text_field(wp_unslash((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''))));
+        $referer = esc_url_raw(wp_unslash((string) ($_SERVER['HTTP_REFERER'] ?? '')));
+        $test = self::test_active() && !self::from_admin($referer); // your own admin screens still see the file
+        self::hit($lead, $referer, sanitize_text_field(wp_unslash((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''))), $test);
+        if ($test) { // answer like a deleted file
+            status_header(404);
+            nocache_headers(); // a CDN must not keep the 404 after the test
+            header('Content-Type: text/plain; charset=utf-8');
+            header('X-Mtrk: 404-test');
+            echo 'Not Found';
+            exit;
+        }
         status_header(200);
         header('Content-Type: ' . (wp_check_filetype($file)['type'] ?: 'application/octet-stream'));
         header('Content-Length: ' . filesize($file));
@@ -277,11 +293,11 @@ final class Cleanup
     }
 
     /** Kinds: google (Google search/images), site (one of your pages: a reference the scan missed), external, bot, direct. */
-    public static function hit(int $lead, string $referer, string $agent): void
+    public static function hit(int $lead, string $referer, string $agent, bool $test = false): void
     {
         $host = (string) wp_parse_url(home_url(), PHP_URL_HOST);
         $from = (string) wp_parse_url($referer, PHP_URL_HOST);
-        if ($from === $host && strpos($referer, '/wp-admin/') !== false) {
+        if (self::from_admin($referer)) {
             return; // your own admin screens (previews in this plugin, the media library)
         }
         if (preg_match('/bot|crawl|spider|slurp/i', $agent)) {
@@ -300,10 +316,65 @@ final class Cleanup
         // ponytail: one meta write per request; a quarantined file that gets many requests should be restored anyway.
         $q['hits'][$kind] = ($q['hits'][$kind] ?? 0) + 1;
         $q['last'] = time();
+        if ($test) {
+            $q['test'] = ($q['test'] ?? 0) + 1;
+        }
         if ($referer !== '') {
             $q['from'] = esc_url_raw($referer);
+            // The last few distinct pages, newest first: a test crawl shows every page that still uses the file.
+            $q['pages'] = array_slice(array_values(array_unique(array_merge([$q['from']], (array) ($q['pages'] ?? [])))), 0, self::PAGES);
         }
         update_post_meta($lead, self::META, $q);
+    }
+
+    private static function from_admin(string $referer): bool
+    {
+        return $referer !== '' && wp_parse_url($referer, PHP_URL_HOST) === wp_parse_url(home_url(), PHP_URL_HOST) && strpos($referer, '/wp-admin/') !== false;
+    }
+
+    /** Lead ids of quarantined groups with at least one logged request (any source, any time while quarantined). */
+    public static function requested(): array
+    {
+        return array_keys(array_filter(self::quarantined(), fn($q) => array_sum((array) ($q['hits'] ?? [])) > 0));
+    }
+
+    // ---- 404 test: for a limited time, quarantined files answer like deleted ones -----------------------------
+
+    /** End of the current or last test, null when none ever ran. */
+    public static function test_until(): ?int
+    {
+        return self::test_info()['until'] ?? null;
+    }
+
+    /** Checked at request time: the test ends by itself, no cron needed. */
+    public static function test_active(): bool
+    {
+        return (self::test_until() ?? 0) > time();
+    }
+
+    public static function start_test(int $hours = 24): bool
+    {
+        if (!in_array($hours, self::TEST_HOURS, true)) {
+            return false;
+        }
+        update_option(self::TEST, ['start' => time(), 'until' => time() + $hours * HOUR_IN_SECONDS], false);
+        return true;
+    }
+
+    /** Ends it now; the record stays so the screen can say when the last test ran. */
+    public static function stop_test(): void
+    {
+        $t = get_option(self::TEST);
+        if (is_array($t) && (int) ($t['until'] ?? 0) > time()) {
+            update_option(self::TEST, ['start' => (int) $t['start'], 'until' => time()], false);
+        }
+    }
+
+    /** @return array{start:int,until:int}|null */
+    public static function test_info(): ?array
+    {
+        $t = get_option(self::TEST);
+        return is_array($t) && !empty($t['until']) ? ['start' => (int) ($t['start'] ?? 0), 'until' => (int) $t['until']] : null;
     }
 
     public static function probe_url(): string
@@ -392,7 +463,7 @@ final class Cleanup
     }
 
     /** uploads/mtrk-quarantine-<random>: not guessable, and closed to direct requests where .htaccess works. */
-    private static function qdir(): string
+    public static function qdir(): string
     {
         $name = get_option(self::DIR);
         if (!$name) {

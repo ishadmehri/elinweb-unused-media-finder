@@ -53,6 +53,9 @@ final class Admin
             'uploads' => ['url' => wp_upload_dir(null, false)['baseurl'], 'root' => wp_normalize_path(wp_upload_dir(null, false)['basedir'])],
             'i18n' => [
                 'zipBuilding' => __('Building the ZIP…', 'elinweb-unused-media-finder'),
+                'exportBuilding' => __('Preparing the list…', 'elinweb-unused-media-finder'),
+                /* translators: %s: number of rows */
+                'exportDone' => __('List downloaded: %s row(s).', 'elinweb-unused-media-finder'),
                 /* translators: %s: number of files */
                 'zipDone' => __('%s file(s) added to the ZIP.', 'elinweb-unused-media-finder'),
                 /* translators: %s: number of folders left */

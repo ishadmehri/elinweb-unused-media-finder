@@ -3,7 +3,7 @@
  * Plugin Name: Elinweb Unused Media Finder
  * Plugin URI: https://github.com/ishadmehri/elinweb-unused-media-finder
  * Description: Find unreferenced media, see where each file is used, find duplicate files, and clean up safely with a reversible quarantine.
- * Version: 0.9.4
+ * Version: 0.10.0
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Author: Iman Shadmehri
@@ -16,7 +16,7 @@
 
 defined('ABSPATH') || exit;
 
-define('MTRK_VERSION', '0.9.4');
+define('MTRK_VERSION', '0.10.0');
 define('MTRK_FILE', __FILE__);
 
 require __DIR__ . '/includes/class-scanner.php';
@@ -25,6 +25,7 @@ require __DIR__ . '/includes/class-sizes.php';
 require __DIR__ . '/includes/class-orphans.php';
 require __DIR__ . '/includes/class-cleanup.php';
 require __DIR__ . '/includes/class-duplicates.php';
+require __DIR__ . '/includes/class-export.php';
 require __DIR__ . '/includes/class-admin.php';
 require __DIR__ . '/includes/class-page.php';
 

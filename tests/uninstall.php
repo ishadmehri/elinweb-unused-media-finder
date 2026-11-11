@@ -55,7 +55,9 @@ try {
     Scanner::install();
     $dir = $quarantine([$plain]);
     $is(is_dir($dir), 'setup: second round is in quarantine');
+    Cleanup::start_test(1);
     $uninstall();
+    $is(get_option(Cleanup::TEST) === false, 'uninstall: the 404 test option is removed');
     $is(file_get_contents("$base/2026/10/mtrk-un-plain.jpg") === 'plain', 'uninstall: the file is back');
     $is(!is_dir($dir), 'uninstall: the empty closed folder is removed');
 } finally {

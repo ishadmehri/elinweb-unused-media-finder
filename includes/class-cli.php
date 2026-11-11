@@ -16,6 +16,7 @@ defined('ABSPATH') || exit;
  *     wp elinweb-unused-media-finder unused --format=csv > unused.csv
  *     wp elinweb-unused-media-finder usage 123
  *     wp elinweb-unused-media-finder quarantine $(wp elinweb-unused-media-finder unused --format=ids)
+ *     wp elinweb-unused-media-finder quarantine-test start --hours=6
  */
 final class CLI
 {
@@ -190,6 +191,44 @@ final class CLI
         WP_CLI::confirm(sprintf('Permanently delete %d attachment(s) and their files?', count($args)), $assoc);
         $out = Cleanup::delete(array_map('intval', $args));
         WP_CLI::success(sprintf('%d deleted, %s freed, %d refused (referenced).', count($out['ids']), size_format($out['bytes']) ?: '0 B', count($args) - count(array_intersect($args, $out['ids']))));
+    }
+
+    /**
+     * For a limited time, quarantined files answer 404 like deleted files; requests are still logged.
+     *
+     * Crawl the site while it runs, then restore what was requested. Visitors and search engines get the 404s too.
+     *
+     * ## OPTIONS
+     *
+     * <action>
+     * : start, stop or status.
+     *
+     * [--hours=<hours>]
+     * : How long the test runs: 1, 6, 24 or 72.
+     * ---
+     * default: 24
+     * ---
+     *
+     * @subcommand quarantine-test
+     */
+    public function quarantine_test(array $args, array $assoc): void
+    {
+        $action = (string) ($args[0] ?? '');
+        if ($action === 'start' && !Cleanup::start_test((int) $assoc['hours'])) {
+            WP_CLI::error('--hours must be 1, 6, 24 or 72.');
+        } elseif ($action === 'stop') {
+            Cleanup::stop_test();
+        } elseif (!in_array($action, ['start', 'status'], true)) {
+            WP_CLI::error('Use start, stop or status.');
+        }
+        $info = Cleanup::test_info();
+        if (Cleanup::test_active()) {
+            WP_CLI::log(sprintf('404 test running until %s.', wp_date('Y-m-d H:i', $info['until'])));
+        } else {
+            WP_CLI::log($info ? sprintf('404 test off. Last test: %s to %s.', wp_date('Y-m-d H:i', $info['start']), wp_date('Y-m-d H:i', $info['until'])) : '404 test off.');
+        }
+        $requested = Cleanup::requested();
+        WP_CLI::log(sprintf('Quarantined: %d  Requested: %d%s', count(Cleanup::quarantined()), count($requested), $requested ? ' (#' . implode(', #', $requested) . ')' : ''));
     }
 
     /**

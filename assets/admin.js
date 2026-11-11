@@ -19,6 +19,42 @@
   };
 
   const fmt = (s, ...a) => s.replace(/%(\d)\$s/g, (_, i) => a[i - 1]).replace('%s', a[0]);
+
+  // Files built on the server (ZIP, lists) arrive as a download; an error comes back as JSON (or a PHP error page).
+  const saveBlob = (blob, name) => {
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = name;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 60000);
+  };
+  const download = async (data, fallback) => {
+    const body = new FormData();
+    body.append('_ajax_nonce', cfg.nonce);
+    Object.entries(data).forEach(([k, v]) => body.append(k, v));
+    const res = await fetch(cfg.ajax, { method: 'POST', body, credentials: 'same-origin' });
+    if (!res.ok || /json|html/.test(res.headers.get('Content-Type') || '')) {
+      const json = await res.json().catch(() => null);
+      throw new Error((json && json.data) || t.error);
+    }
+    saveBlob(await res.blob(), ((res.headers.get('Content-Disposition') || '').match(/filename="?([^";]+)/) || [])[1] || fallback);
+    return res;
+  };
+  // CSV built in the browser (extra files), with the same rules as the server: quoted when needed, and text that a
+  // spreadsheet would run as a formula (= + - @ tab CR) gets a leading quote.
+  const csvCell = (v) => {
+    let s = String(v);
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const stamp = () => {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  };
+  const exportStatus = (btn, text) => { btn.closest('.mtrk-export').querySelector('.mtrk-export-status').textContent = text; };
   // Human sizes: KB under a megabyte (small leftovers would all read 0.0 MB), MB above.
   const size = (b) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} ${t.mb}` : `${Math.max(1, Math.round(b / 1024))} ${t.kb}`);
 
@@ -158,6 +194,9 @@
       e.preventDefault();
       e.stopPropagation(); // keep the media grid from treating it as a selection click
       openDialog(usage ? 'mtrk_usage' : 'mtrk_preview', (usage || preview).dataset.id);
+    } else if (action && action.dataset.ids) { // "restore every file that was requested": the ids come from the server
+      e.preventDefault();
+      act(action.dataset.act, action.dataset.ids.split(' '), action);
     } else if (action && (action.dataset.id || action.closest('.mtrk-bulk[data-scope]'))) {
       e.preventDefault();
       act(action.dataset.act, action.dataset.id ? [action.dataset.id] : picked(), action, action.dataset.id ? [] : pickedFiles());
@@ -208,8 +247,40 @@
       .then((ok) => {
         probe.textContent = ok ? t.probeOk : t.probeFail;
         probe.classList.add(ok ? 'notice-success' : 'notice-warning');
+        const testProbe = document.querySelector('.mtrk-qtest-probe');
+        if (testProbe) testProbe.hidden = ok;
       });
   }
+
+  // 404 test: start or stop, then the page reloads with its new state.
+  document.querySelectorAll('[data-qtest]').forEach((btn) => btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try {
+      const hours = document.getElementById('mtrk-qtest-hours');
+      await post('mtrk_qtest', { do: btn.dataset.qtest, hours: hours ? hours.value : 24 });
+      window.location.reload();
+    } catch (e) {
+      window.alert(e.message);
+      btn.disabled = false;
+    }
+  }));
+
+  // "Download list" of the Unreferenced (as filtered) and Quarantine tabs: built on the server, every page.
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.mtrk-export:not([data-list="orphans"]) .mtrk-export-btn');
+    if (!btn) return;
+    const bar = btn.closest('.mtrk-export');
+    btn.disabled = true;
+    exportStatus(btn, t.exportBuilding);
+    try {
+      const args = JSON.parse(bar.dataset.args || '{}');
+      const res = await download({ action: 'mtrk_export', list: bar.dataset.list, format: btn.dataset.format, ...args }, `${bar.dataset.list}-media.${btn.dataset.format}`);
+      exportStatus(btn, fmt(t.exportDone, res.headers.get('X-Mtrk-Rows') || '?'));
+    } catch (err) {
+      exportStatus(btn, err.message);
+    }
+    btn.disabled = false;
+  });
 
   // The last result of a slow check (extra files, unregistered sizes) is kept for this browser tab, so moving
   // between tabs doesn't mean checking again. It belongs to one scan: a new scan drops it. Deleting never relies
@@ -248,6 +319,7 @@
     let files = [];
     let shown = 0;
 
+    const fileUrl = (f) => `${orphans.dataset.base}/${f.path.split('/').map(encodeURIComponent).join('/')}`;
     const cell = (child) => {
       const td = document.createElement('td');
       td.append(child);
@@ -271,7 +343,7 @@
       th.append(box);
       const name = document.createElement('div');
       name.className = 'mtrk-qmedia';
-      const url = `${orphans.dataset.base}/${f.path.split('/').map(encodeURIComponent).join('/')}`;
+      const url = fileUrl(f);
       const open = document.createElement('a');
       open.href = url;
       open.target = '_blank';
@@ -374,27 +446,25 @@
       zipBtn.disabled = true;
       status.textContent = t.zipBuilding;
       try {
-        const body = new FormData();
-        body.append('action', 'mtrk_zip');
-        body.append('_ajax_nonce', cfg.nonce);
-        body.append('paths', JSON.stringify(paths));
-        const res = await fetch(cfg.ajax, { method: 'POST', body, credentials: 'same-origin' });
-        if (!(res.headers.get('Content-Type') || '').includes('zip')) {
-          const json = await res.json().catch(() => null);
-          throw new Error((json && json.data) || t.error);
-        }
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(await res.blob());
-        link.download = ((res.headers.get('Content-Disposition') || '').match(/filename="?([^";]+)/) || [])[1] || 'extra-files.zip';
-        document.body.append(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(link.href), 60000);
+        await download({ action: 'mtrk_zip', paths: JSON.stringify(paths) }, 'extra-files.zip');
         status.textContent = fmt(t.zipDone, paths.length);
       } catch (e) {
         status.textContent = e.message;
       }
       sync();
+    });
+    // "Download list": built here from the result this tab already holds (every file, not only the rows drawn).
+    orphans.querySelector('.mtrk-export').addEventListener('click', (e) => {
+      const btn = e.target.closest('.mtrk-export-btn');
+      if (!btn) return;
+      const csv = btn.dataset.format === 'csv';
+      const lines = csv
+        ? [['path', 'url', 'server_path', 'size_bytes', 'type', 'owner_id', 'kept'],
+          ...files.map((f) => [f.path, fileUrl(f), `${orphans.dataset.root}/${f.path}`, f.bytes, f.type, f.owner || '', f.kept ? 'yes' : 'no'])]
+          .map((r) => r.map(csvCell).join(','))
+        : files.map(fileUrl);
+      saveBlob(new Blob([csv ? '﻿' : '', lines.join('\n'), '\n'], { type: `${csv ? 'text/csv' : 'text/plain'};charset=utf-8` }), `extra-files-${stamp()}.${btn.dataset.format}`);
+      exportStatus(btn, fmt(t.exportDone, files.length));
     });
     delBtn.addEventListener('click', async () => {
       const paths = selected();

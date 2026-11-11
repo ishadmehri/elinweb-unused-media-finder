@@ -19,6 +19,8 @@ final class Page
         add_action('wp_ajax_mtrk_act', [self::class, 'ajax_act']);
         add_action('wp_ajax_mtrk_preview', [self::class, 'ajax_preview']);
         add_action('wp_ajax_mtrk_dups', [self::class, 'ajax_dups']);
+        add_action('wp_ajax_mtrk_export', [self::class, 'ajax_export']);
+        add_action('wp_ajax_mtrk_qtest', [self::class, 'ajax_qtest']);
     }
 
     public static function url(string $tab, array $args = []): string
@@ -166,6 +168,7 @@ final class Page
             <p><?php esc_html_e('No unreferenced media found.', 'elinweb-unused-media-finder'); ?></p>
             <?php return; ?>
         <?php endif; ?>
+        <?php self::export_bar('unused', ['type' => $type, 'order' => $order]); ?>
 
         <div class="mtrk-bulk" data-scope="unused">
             <label><input type="checkbox" class="mtrk-all"> <?php esc_html_e('Select all on this page', 'elinweb-unused-media-finder'); ?></label>
@@ -258,6 +261,19 @@ final class Page
             ])) . '</div></div>';
             remove_filter('paginate_links', $strip);
         }
+    }
+
+    /** "Download list" buttons for the whole list as filtered, every page. The 'orphans' list is built in the browser. */
+    private static function export_bar(string $list, array $args = []): void
+    {
+        ?>
+        <p class="mtrk-export" data-list="<?php echo esc_attr($list); ?>" data-args="<?php echo esc_attr((string) wp_json_encode($args)); ?>">
+            <button type="button" class="button mtrk-export-btn" data-format="csv"><?php esc_html_e('Download list (CSV)', 'elinweb-unused-media-finder'); ?></button>
+            <button type="button" class="button mtrk-export-btn" data-format="txt"><?php esc_html_e('Download list (TXT)', 'elinweb-unused-media-finder'); ?></button>
+            <span class="description"><?php esc_html_e('Every item of the list, not only this page. CSV opens in Excel or Google Sheets (there is no .xlsx); TXT has one URL per line.', 'elinweb-unused-media-finder'); ?></span>
+            <span class="mtrk-export-status" aria-live="polite"></span>
+        </p>
+        <?php
     }
 
     /** List view: one row per attachment, with its status when $status is set (duplicates). @param array<int,int> $items id => bytes */
@@ -426,9 +442,22 @@ final class Page
         ?>
         <p class="description"><?php esc_html_e('Quarantined files were moved out of their original path. If anyone asks for them, the plugin serves the file and logs the request. Anything that received no requests for a few weeks is safe to delete. A request from "Pages of this site" means something still links to the file that the scan did not find: restore it.', 'elinweb-unused-media-finder'); ?></p>
         <p class="mtrk-probe notice inline" data-url="<?php echo esc_url(Cleanup::probe_url()); ?>" aria-live="polite"><?php esc_html_e('Checking that requests for quarantined files reach WordPress…', 'elinweb-unused-media-finder'); ?></p>
+        <?php
+        if ($rows || Cleanup::test_active()) {
+            self::test_box();
+        }
+        ?>
         <?php if (!$rows) : ?>
             <p><?php esc_html_e('Nothing is quarantined.', 'elinweb-unused-media-finder'); ?></p>
             <?php return; ?>
+        <?php endif; ?>
+        <?php self::export_bar('quarantine'); ?>
+        <?php $requested = Cleanup::requested(); ?>
+        <?php if ($requested) : ?>
+            <p class="mtrk-requested">
+                <?php echo esc_html(sprintf(/* translators: %s: number of media items */ __('%s quarantined media received at least one request (from any source, at any time while quarantined, including during a 404 test).', 'elinweb-unused-media-finder'), number_format_i18n(count($requested)))); ?>
+                <button type="button" class="button" data-act="restore" data-ids="<?php echo esc_attr(implode(' ', $requested)); ?>"><?php esc_html_e('Restore every file that was requested', 'elinweb-unused-media-finder'); ?></button>
+            </p>
         <?php endif; ?>
         <div class="mtrk-bulk" data-scope="quarantine">
             <label><input type="checkbox" class="mtrk-all"> <?php esc_html_e('Select all', 'elinweb-unused-media-finder'); ?></label>
@@ -450,7 +479,7 @@ final class Page
                 $hits = (array) $q['hits'];
                 $file = wp_basename((string) get_attached_file($id));
                 ?>
-                <tr class="<?php echo !empty($hits['site']) ? 'mtrk-warn' : ''; ?>">
+                <tr class="<?php echo !empty($hits['site']) || !empty($q['test']) ? 'mtrk-warn' : ''; ?>">
                     <th scope="row" class="check-column"><input type="checkbox" class="mtrk-pick" value="<?php echo (int) $id; ?>" aria-label="<?php echo esc_attr(sprintf(/* translators: %s: file name */ __('Select %s', 'elinweb-unused-media-finder'), $file)); ?>"></th>
                     <td class="mtrk-qmedia">
                         <button type="button" class="mtrk-thumb mtrk-preview" data-id="<?php echo (int) $id; ?>" aria-haspopup="dialog" aria-label="<?php echo esc_attr(sprintf(/* translators: %s: file name */ __('Preview %s', 'elinweb-unused-media-finder'), $file)); ?>"><?php echo wp_get_attachment_image($id, [60, 60], true, ['alt' => '']); ?></button>
@@ -466,18 +495,61 @@ final class Page
                                     <span class="mtrk-chip mtrk-chip-<?php echo esc_attr($kind); ?>"><?php echo esc_html($label . ': ' . number_format_i18n($hits[$kind])); ?></span>
                                 <?php endif; ?>
                             <?php endforeach; ?>
+                            <?php if (!empty($q['test'])) : ?>
+                                <span class="mtrk-chip mtrk-chip-test"><?php echo esc_html(sprintf(/* translators: %s: number of requests */ __('During the 404 test: %s', 'elinweb-unused-media-finder'), number_format_i18n((int) $q['test']))); ?></span>
+                            <?php endif; ?>
                         <?php endif; ?>
                     </td>
                     <td>
                         <?php if ($q['last']) : ?>
                             <?php echo esc_html(sprintf(/* translators: %s: time span */ __('%s ago', 'elinweb-unused-media-finder'), human_time_diff((int) $q['last']))); ?>
-                            <?php if ($q['from']) : ?><br><bdi class="mtrk-from" dir="ltr"><?php echo esc_html(wp_parse_url($q['from'], PHP_URL_HOST) . wp_parse_url($q['from'], PHP_URL_PATH)); ?></bdi><?php endif; ?>
+                            <?php foreach ((array) ($q['pages'] ?? array_filter([$q['from']])) as $from) : // referring pages, newest first ?>
+                                <br><bdi class="mtrk-from" dir="ltr"><?php echo esc_html(wp_parse_url($from, PHP_URL_HOST) . wp_parse_url($from, PHP_URL_PATH)); ?></bdi>
+                            <?php endforeach; ?>
                         <?php else : ?>—<?php endif; ?>
                     </td>
                 </tr>
             <?php endforeach; ?>
             </tbody>
         </table>
+        <?php
+    }
+
+    /** For a few hours quarantined files answer 404 like deleted ones, so a crawl shows which pages still ask for them. */
+    private static function test_box(): void
+    {
+        $info = Cleanup::test_info();
+        $when = get_option('date_format') . ' H:i';
+        ?>
+        <div class="mtrk-qtest">
+            <h2><?php esc_html_e('404 test', 'elinweb-unused-media-finder'); ?></h2>
+            <p><?php esc_html_e('For a limited time, quarantined files answer exactly like deleted files (error 404) instead of being served. Meanwhile crawl your site (Screaming Frog, a broken-link checker, or just browse it): every request is logged below with the page it came from. Restore what was requested; what nobody requested is safe to delete. The test ends by itself.', 'elinweb-unused-media-finder'); ?></p>
+            <ul class="mtrk-qtest-caveats">
+                <li><?php esc_html_e('During the test, visitors and search engines get a 404 for these files: keep it short and avoid peak hours.', 'elinweb-unused-media-finder'); ?></li>
+                <li><?php esc_html_e('Purge the page cache and the CDN cache before you crawl; cached pages and files never ask WordPress.', 'elinweb-unused-media-finder'); ?></li>
+                <li><?php esc_html_e('The test only sees requests that reach WordPress (see the check above).', 'elinweb-unused-media-finder'); ?></li>
+            </ul>
+            <p class="mtrk-qtest-probe notice notice-warning inline" hidden><?php esc_html_e('The check above failed: requests for missing files do not reach WordPress here, so the test cannot log anything.', 'elinweb-unused-media-finder'); ?></p>
+            <?php if (Cleanup::test_active()) : ?>
+                <p>
+                    <strong><?php echo esc_html(sprintf(/* translators: 1: date and time, 2: time span */ __('The 404 test is running until %1$s (%2$s left).', 'elinweb-unused-media-finder'), wp_date($when, $info['until']), human_time_diff($info['until']))); ?></strong>
+                    <button type="button" class="button" data-qtest="stop"><?php esc_html_e('Stop the test', 'elinweb-unused-media-finder'); ?></button>
+                </p>
+            <?php else : ?>
+                <p>
+                    <label for="mtrk-qtest-hours"><?php esc_html_e('Duration', 'elinweb-unused-media-finder'); ?></label>
+                    <select id="mtrk-qtest-hours">
+                        <?php foreach ([1 => __('1 hour', 'elinweb-unused-media-finder'), 6 => __('6 hours', 'elinweb-unused-media-finder'), 24 => __('24 hours', 'elinweb-unused-media-finder'), 72 => __('3 days', 'elinweb-unused-media-finder')] as $hours => $label) : ?>
+                            <option value="<?php echo (int) $hours; ?>" <?php selected($hours, 24); ?>><?php echo esc_html($label); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <button type="button" class="button button-primary" data-qtest="start"><?php esc_html_e('Start the 404 test', 'elinweb-unused-media-finder'); ?></button>
+                </p>
+                <?php if ($info) : ?>
+                    <p class="mtrk-note"><?php echo esc_html(sprintf(/* translators: 1: start date and time, 2: end date and time */ __('Last test: from %1$s to %2$s.', 'elinweb-unused-media-finder'), wp_date($when, $info['start']), wp_date($when, $info['until']))); ?></p>
+                <?php endif; ?>
+            <?php endif; ?>
+        </div>
         <?php
     }
 
@@ -496,6 +568,7 @@ final class Page
             <p><button type="button" class="button mtrk-orphans-check"><?php esc_html_e('Check for extra files', 'elinweb-unused-media-finder'); ?></button></p>
             <p class="mtrk-orphans-status" aria-live="polite"></p>
             <div class="mtrk-orphans-result" hidden>
+                <?php self::export_bar('orphans'); ?>
                 <div class="mtrk-bulk">
                     <label><input type="checkbox" class="mtrk-orphans-all"> <?php esc_html_e('Select everything deletable', 'elinweb-unused-media-finder'); ?></label>
                     <span class="mtrk-count" aria-live="polite"></span>
@@ -764,6 +837,47 @@ final class Page
         readfile($zip['file']); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile -- streams the temporary ZIP to the browser
         wp_delete_file($zip['file']);
         exit;
+    }
+
+    /** Sends the whole Unreferenced (as filtered) or Quarantine list as a CSV or TXT download (or a JSON error). */
+    public static function ajax_export(): void
+    {
+        Admin::guard(check_ajax_referer('mtrk', false, false));
+        $list = sanitize_key(wp_unslash($_POST['list'] ?? ''));
+        $format = sanitize_key(wp_unslash($_POST['format'] ?? '')) === 'txt' ? 'txt' : 'csv';
+        if (!in_array($list, Export::LISTS, true)) {
+            wp_send_json_error(__('Invalid request.', 'elinweb-unused-media-finder'), 400);
+        }
+        if ($list === 'unused' && !Scanner::last()) {
+            wp_send_json_error(__('Run a full scan first.', 'elinweb-unused-media-finder'), 409);
+        }
+        $ids = Export::ids($list, sanitize_key(wp_unslash($_POST['type'] ?? '')), sanitize_key(wp_unslash($_POST['order'] ?? 'largest')));
+        nocache_headers();
+        header('Content-Type: ' . ($format === 'csv' ? 'text/csv' : 'text/plain') . '; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . ($list === 'unused' ? 'unused' : 'quarantined') . '-media-' . current_time('Ymd-His') . ".$format\""); // not wp_date(): calendar plugins rewrite its digits
+        header('X-Mtrk-Rows: ' . count($ids));
+        $out = fopen('php://output', 'w'); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- the response body as a stream, not a file
+        Export::write($out, $list, $format, $ids);
+        fclose($out); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- same stream
+        exit;
+    }
+
+    /** Starts or stops the 404 test. */
+    public static function ajax_qtest(): void
+    {
+        Admin::guard(check_ajax_referer('mtrk', false, false));
+        $do = sanitize_key(wp_unslash($_POST['do'] ?? ''));
+        if ($do === 'start') {
+            if (!Cleanup::start_test(absint($_POST['hours'] ?? 24))) {
+                wp_send_json_error(__('Choose 1, 6, 24 or 72 hours.', 'elinweb-unused-media-finder'), 400);
+            }
+            wp_send_json_success(['until' => Cleanup::test_until()]);
+        }
+        if ($do === 'stop') {
+            Cleanup::stop_test();
+            wp_send_json_success();
+        }
+        wp_send_json_error(__('Invalid request.', 'elinweb-unused-media-finder'), 400);
     }
 
     public static function ajax_dups(): void

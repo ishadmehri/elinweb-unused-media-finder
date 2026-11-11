@@ -667,3 +667,92 @@ msgstr "پشتیبانی zip (ZipArchive) روی این سرور فعال نیس
 
 msgid "Could not create the ZIP file."
 msgstr "فایل zip ساخته نشد."
+
+msgid "Elinweb Unused Media Finder"
+msgstr "Elinweb Unused Media Finder"
+
+msgid "https://github.com/ishadmehri/elinweb-unused-media-finder"
+msgstr "https://github.com/ishadmehri/elinweb-unused-media-finder"
+
+msgid "Iman Shadmehri"
+msgstr "ایمان شادمهری"
+
+msgid "https://profiles.wordpress.org/imansh/"
+msgstr "https://profiles.wordpress.org/imansh/"
+
+msgid "Preparing the list…"
+msgstr "در حال آماده کردن فهرست…"
+
+#, php-format
+msgid "List downloaded: %s row(s)."
+msgstr "فهرست دانلود شد: %s ردیف."
+
+msgid "Download list (CSV)"
+msgstr "دانلود فهرست (CSV)"
+
+msgid "Download list (TXT)"
+msgstr "دانلود فهرست (TXT)"
+
+msgid "Every item of the list, not only this page. CSV opens in Excel or Google Sheets (there is no .xlsx); TXT has one URL per line."
+msgstr "همه‌ی موارد فهرست، نه فقط همین صفحه. فایل CSV در اکسل یا Google Sheets باز می‌شود (خروجی xlsx. وجود ندارد)؛ در فایل TXT هر خط یک آدرس است."
+
+#, php-format
+msgid "%s quarantined media received at least one request (from any source, at any time while quarantined, including during a 404 test)."
+msgstr "%s رسانه‌ی قرنطینه دست‌کم یک درخواست داشته‌اند (از هر منبعی، در هر زمانی از مدت قرنطینه، از جمله در آزمون ۴۰۴)."
+
+msgid "Restore every file that was requested"
+msgstr "برگرداندن همه‌ی فایل‌هایی که درخواست داشته‌اند"
+
+#, php-format
+msgid "During the 404 test: %s"
+msgstr "در آزمون ۴۰۴: %s"
+
+msgid "404 test"
+msgstr "آزمون ۴۰۴"
+
+msgid "For a limited time, quarantined files answer exactly like deleted files (error 404) instead of being served. Meanwhile crawl your site (Screaming Frog, a broken-link checker, or just browse it): every request is logged below with the page it came from. Restore what was requested; what nobody requested is safe to delete. The test ends by itself."
+msgstr "برای مدتی محدود، فایل‌های قرنطینه به‌جای تحویل داده شدن، دقیقاً مثل فایل حذف‌شده جواب می‌دهند (خطای ۴۰۴). در این مدت سایت را بخزید (با Screaming Frog، یک بررسی‌کننده‌ی لینک شکسته، یا فقط با مرور صفحه‌ها): هر درخواست همراه با صفحه‌ای که از آن آمده در پایین ثبت می‌شود. فایل‌های درخواست‌شده را برگردانید؛ فایلی که هیچ‌کس درخواستش نکرده، حذفش امن است. آزمون خودش تمام می‌شود."
+
+msgid "During the test, visitors and search engines get a 404 for these files: keep it short and avoid peak hours."
+msgstr "در طول آزمون، بازدیدکننده‌ها و موتورهای جست‌وجو برای این فایل‌ها خطای ۴۰۴ می‌گیرند: آزمون را کوتاه نگه دارید و ساعت‌های پربازدید را انتخاب نکنید."
+
+msgid "Purge the page cache and the CDN cache before you crawl; cached pages and files never ask WordPress."
+msgstr "قبل از خزیدن، کش صفحه‌ها و کش CDN را پاک کنید؛ صفحه‌ها و فایل‌های کش‌شده اصلاً به وردپرس درخواست نمی‌دهند."
+
+msgid "The test only sees requests that reach WordPress (see the check above)."
+msgstr "آزمون فقط درخواست‌هایی را می‌بیند که به وردپرس می‌رسند (بررسی بالا را ببینید)."
+
+msgid "The check above failed: requests for missing files do not reach WordPress here, so the test cannot log anything."
+msgstr "بررسی بالا ناموفق بود: در این سرور درخواست فایل‌های ناموجود به وردپرس نمی‌رسد، پس آزمون نمی‌تواند چیزی ثبت کند."
+
+#, php-format
+msgid "The 404 test is running until %1$s (%2$s left)."
+msgstr "آزمون ۴۰۴ تا %1$s در حال اجراست (%2$s مانده)."
+
+msgid "Stop the test"
+msgstr "توقف آزمون"
+
+msgid "Duration"
+msgstr "مدت"
+
+msgid "1 hour"
+msgstr "۱ ساعت"
+
+msgid "6 hours"
+msgstr "۶ ساعت"
+
+msgid "24 hours"
+msgstr "۲۴ ساعت"
+
+msgid "3 days"
+msgstr "۳ روز"
+
+msgid "Start the 404 test"
+msgstr "شروع آزمون ۴۰۴"
+
+#, php-format
+msgid "Last test: from %1$s to %2$s."
+msgstr "آخرین آزمون: از %1$s تا %2$s."
+
+msgid "Choose 1, 6, 24 or 72 hours."
+msgstr "۱، ۶، ۲۴ یا ۷۲ ساعت را انتخاب کنید."
