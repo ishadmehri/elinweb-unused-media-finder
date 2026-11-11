@@ -4,7 +4,7 @@ Tags: media library, unused media, duplicate images, cleanup, storage
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.10.0
+Stable tag: 0.11.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -23,14 +23,15 @@ A permanent delete removes the files from the server, so the plugin is built aro
 * **Live updates.** After one full scan, saves in the admin are recorded without scanning again.
 * **Media Library integration.** A "Usage" column and filter in list and grid mode, and a dialog showing every place a file is used.
 * **Unreferenced list.** Card or list view, 20 to 500 items per page, preview, filter by type, sort by size or date.
-* **Duplicates.** Files with identical content that were uploaded more than once. Sizes are compared first and only same-size files are hashed (MD5), so large libraries stay light. Attachments that share one file (media translations) are not duplicates, and only unreferenced copies can be selected. An option adds the extra files on disk, to catch stray copies of library files.
+* **Duplicates.** Files with identical content that were uploaded more than once. Sizes are compared first and only same-size files are hashed (MD5), so large libraries stay light. Attachments that share one file (media translations) are not duplicates, and only unreferenced copies can be selected. Each used copy shows its first places of use; an extra file whose URL appears somewhere has a "Where?" search. An option adds the extra files on disk, to catch stray copies of library files.
+* **Replace duplicates (merge).** Keep one copy and point the references of the others at it, then the others go to quarantine. A preview lists every place that will be rewritten and every place that cannot be; a copy with any place that cannot be rewritten safely is left alone. Every changed value is logged first, and a merge can be undone. See the FAQ for what it can rewrite.
 * **Quarantine.** Moves a file (all sizes and WebP copies) out of its public path into a closed folder, but still answers requests for the old URL and logs them, with the pages they came from. If nothing asks for it for a few weeks, delete it; if something does, restore it with one click, or restore every requested file at once.
 * **404 test.** For 1 hour to 3 days, quarantined files answer exactly like deleted files (404) while every request is still logged. Crawl your site meanwhile (Screaming Frog, a broken-link checker, or just browse it), restore what was requested, and delete the rest without waiting weeks. It ends by itself.
 * **Download lists.** The Unreferenced (as filtered), Quarantine and Extra files lists as a CSV file (opens in Excel or Google Sheets) or a TXT file with one URL per line, with URL, path, server path and size of every item.
 * **Extra files.** Leftover sizes and files on disk that no media item owns, with a preview, the full server path, and a ZIP download of the selection.
 * **Unregistered sizes.** Files generated for image sizes that no theme or plugin registers any more.
 * **Safety.** A scan that reports a featured image as unreferenced is marked untrustworthy and quarantine and delete are refused. Attachments sharing one file move together.
-* **WP-CLI.** `wp elinweb-unused-media-finder scan|status|unused|usage|quarantine|restore|delete|keep|quarantine-test`
+* **WP-CLI.** `wp elinweb-unused-media-finder scan|status|unused|usage|quarantine|restore|delete|keep|quarantine-test|duplicates`
 
 **What it cannot see**
 
@@ -63,7 +64,7 @@ While it runs, visitors and search engines get a 404 for quarantined files, exac
 
 = What data does it store? =
 
-It has no settings page. It creates up to five tables (`mtrk_refs`, `mtrk_paths`, `mtrk_files`, `mtrk_hashes`, and `mtrk_xhashes` while a duplicates check includes extra files), a few options prefixed `mtrk_`, the post meta `_mtrk_quarantine` and `_mtrk_keep`, and the user meta `mtrk_per_page` and `mtrk_view`. For quarantined files it logs the time, the last few referring URLs and the kind of each request (from the user agent), locally in the database. Nothing is sent to any other server.
+It has no settings page. It creates up to seven tables (`mtrk_refs`, `mtrk_paths`, `mtrk_files`, `mtrk_hashes`, `mtrk_xhashes` while a duplicates check includes extra files, and the merge undo log `mtrk_merges` and `mtrk_merge_rows` after the first merge, which keeps the old and new values of the last 50 merges), a few options prefixed `mtrk_`, the post meta `_mtrk_quarantine` and `_mtrk_keep`, and the user meta `mtrk_per_page` and `mtrk_view`. For quarantined files it logs the time, the last few referring URLs and the kind of each request (from the user agent), locally in the database. Nothing is sent to any other server.
 
 = What happens when I uninstall it? =
 
@@ -72,6 +73,17 @@ Quarantined files are moved back to their original place first, then the tables,
 = Does it work on multisite? =
 
 It has only been tested on single sites. Uninstall cleanup does not handle every site of a network yet.
+
+= What can "Replace the other copies" (merge) rewrite? =
+
+Only places the last scan recorded, and only these forms. The files are identical (MD5), so a size of the replaced copy becomes the same size of the kept copy, or its full size when the kept copy has no such size.
+
+* Post content and excerpt (any post type): URLs of the copy's file, its registered sizes and its original image, written plainly, with JSON-escaped slashes or with URL-encoded names, after the uploads path; the `wp-image-ID` class and `data-id`; the ids of the core Image, Gallery, Cover, Media & Text, File, Video and Audio blocks; `[gallery]` and `[playlist]` ids.
+* Post, term and user meta and options whose whole value is the id, or a comma-separated list of ids, where the scan reads a media id: featured image (also of WooCommerce variations), WooCommerce product gallery and category thumbnail, image and file fields of ACF / Secure Custom Fields, Meta Box and JetEngine that store a plain id, site icon and site logo. A number is changed only as a whole number, never inside a longer one.
+* URLs inside text, JSON or serialized values of post, term and user meta and options. Structured values are changed only when decoding and encoding them again gives back exactly the stored bytes; serialized lengths stay valid.
+* In those values, objects holding both an id and a URL of the copy: Elementor image, background and gallery controls, media widgets; and `custom_logo` in theme settings. Elementor's CSS cache of a changed page is removed so Elementor builds it again.
+
+Not rewritten (the copy is then not replaced; change these places by hand and run the preview again): comments, term descriptions, plugin tables, theme and plugin code; ids inside structures without the copy's URL next to them (ACF gallery fields, Pods file fields, which also keep the id in a separate list, Meta Box groups, JetEngine id+URL values and repeaters, plugin block attributes, Elementor dynamic tags and V4 images); URLs of old sizes no longer in the metadata, WebP/AVIF copies, edited versions, CDN URLs without the uploads path, and other encodings; links to the copy's attachment page; copies that share their file with another media item; a copy you marked "Keep". A page cache or CDN must be purged by you afterwards.
 
 = A file is listed as used but I know it is not. =
 
@@ -86,6 +98,11 @@ Open "Where it is used". Tables of plugins you removed long ago and caches (for 
 5. Scan: a full scan of the database, plugin tables and source code, with progress.
 
 == Changelog ==
+
+= 0.11.0 =
+* Duplicates: each used copy shows its first three places of use (title, link to the edit screen) right under its badge, with "+N more" for the full list. One query for the whole page.
+* Duplicates: an extra file whose URL appears somewhere has a "Where?" action that searches the places the scan reads and lists them, or says so when it cannot find them.
+* Duplicates: "Replace the other copies with the selected one…" (merge). Choose the copy to keep; a preview lists, per copy, the places that will be rewritten and those that cannot be. Copies with no refused place are rewritten, checked with the scanner, and quarantined (or deleted when you tick the box). Every old and new value is logged first; "Undo this merge" restores them and brings the copy back. WP-CLI: `wp elinweb-unused-media-finder duplicates merge|undo`.
 
 = 0.10.0 =
 * Quarantine: a timed 404 test (1 hour to 3 days). While it runs, quarantined files answer 404 like deleted files and every request is logged as a test request, so a crawl of the site shows which files are still used. It ends by itself; WP-CLI: `wp elinweb-unused-media-finder quarantine-test start|stop|status`.

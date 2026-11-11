@@ -89,17 +89,18 @@
     }
     return dialog;
   };
-  const openDialog = async (action, id) => {
+  // data: an attachment id, or the request fields (merge preview, "Where?" of an extra file).
+  const openDialog = async (action, fields) => {
     ensureDialog();
     const content = dialog.querySelector('.mtrk-body');
     const title = dialog.querySelector('#mtrk-dialog-title');
     const mine = ++seq;
-    title.textContent = action === 'mtrk_preview' ? t.preview : t.title;
-    dialog.classList.toggle('mtrk-dialog-wide', action === 'mtrk_preview');
+    title.textContent = { mtrk_preview: t.preview, mtrk_merge: t.mergeTitle }[action] || t.title;
+    dialog.classList.toggle('mtrk-dialog-wide', action === 'mtrk_preview' || action === 'mtrk_merge');
     content.textContent = t.loading;
     if (!dialog.open) dialog.showModal();
     try {
-      const data = await post(action, { id });
+      const data = await post(action, typeof fields === 'object' ? fields : { id: fields });
       if (mine !== seq) return;
       content.innerHTML = data.html;
       if (data.title) title.textContent = data.title;
@@ -207,7 +208,78 @@
     }
   }, true);
 
+  // Duplicates: "Where?" of an extra file, and merge (preview, run, continue, undo).
+  const mergeLoop = async (first, merge) => {
+    let r = await post('mtrk_merge', { do: first, merge });
+    while (!r.done) r = await post('mtrk_merge', { do: first === 'undo' ? 'undo' : 'step', merge: r.merge });
+    return r;
+  };
+  const mergeRun = async (btn) => {
+    const body = btn.closest('.mtrk-body');
+    const box = body.querySelector('.mtrk-merge-delete');
+    const out = body.querySelector('.mtrk-merge-result');
+    const items = JSON.parse(btn.dataset.items || '[]');
+    if (box.checked && !window.confirm(fmt(t.mergeConfirmDelete, items.length))) return;
+    btn.disabled = true;
+    box.disabled = true;
+    const list = document.createElement('ul');
+    list.className = 'mtrk-list';
+    for (const item of items) {
+      const label = typeof item === 'number' ? `#${item}` : item;
+      out.textContent = fmt(t.merging, label);
+      let text;
+      try {
+        const first = await post('mtrk_merge', { do: 'run', keep: btn.dataset.keep, delete: box.checked ? 1 : '', ...(typeof item === 'number' ? { id: item } : { paths: [item] }) });
+        text = (first.done ? first : await mergeLoop('step', first.merge)).message;
+      } catch (e) {
+        text = e.message;
+      }
+      list.append(Object.assign(document.createElement('li'), { textContent: `${label}: ${text}` }));
+    }
+    const reload = Object.assign(document.createElement('button'), { type: 'button', className: 'button button-primary', textContent: t.reload });
+    reload.addEventListener('click', () => window.location.reload());
+    const note = Object.assign(document.createElement('p'), { className: 'notice notice-info inline', textContent: t.cachePurge });
+    out.replaceChildren(list, note, reload);
+  };
+  document.addEventListener('click', async (e) => {
+    const where = e.target.closest('.mtrk-where');
+    const open = e.target.closest('.mtrk-merge');
+    const go = e.target.closest('.mtrk-merge-go');
+    const again = e.target.closest('.mtrk-merge-undo, .mtrk-merge-step');
+    if (where) {
+      openDialog('mtrk_where', { path: where.dataset.path });
+    } else if (open) {
+      const section = open.closest('.mtrk-dup');
+      const keep = section.querySelector('.mtrk-keep:checked');
+      if (!keep) {
+        window.alert(t.pickKeep);
+        return;
+      }
+      const ids = [...section.querySelectorAll('.mtrk-mtable button.mtrk-preview[data-id]')].map((b) => b.dataset.id).filter((id) => id !== keep.value);
+      const paths = [...section.querySelectorAll('.mtrk-xtable .mtrk-xpreview[data-path]')].map((b) => b.dataset.path);
+      openDialog('mtrk_merge', { do: 'preview', keep: keep.value, ids, paths });
+    } else if (go) {
+      mergeRun(go);
+    } else if (again) {
+      const undo = again.matches('.mtrk-merge-undo');
+      if (undo && !window.confirm(t.undoConfirm)) return;
+      again.disabled = true;
+      try {
+        const r = await mergeLoop(undo ? 'undo' : 'step', again.dataset.merge);
+        window.alert(`${r.message}\n\n${t.cachePurge}`);
+        window.location.reload();
+      } catch (err) {
+        window.alert(err.message);
+        again.disabled = false;
+      }
+    }
+  });
+
   document.addEventListener('change', (e) => {
+    if (e.target.matches('.mtrk-merge-delete')) {
+      const warn = e.target.closest('.mtrk-body').querySelector('.mtrk-merge-warn');
+      if (warn) warn.hidden = !e.target.checked;
+    }
     if (e.target.matches('.mtrk-bulk[data-scope] .mtrk-all')) {
       document.querySelectorAll('.mtrk-pick').forEach((b) => { b.checked = e.target.checked; });
     }

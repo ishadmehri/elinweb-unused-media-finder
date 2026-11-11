@@ -408,9 +408,6 @@ msgstr "آپلود"
 msgid "Uploaded to"
 msgstr "آپلودشده در"
 
-msgid "Files with exactly identical content that were uploaded more than once. Sizes are compared first, and only same-size files are checked by content hash (MD5). Attachments that share one file from the start (such as media translations) are not counted as duplicates. Only unreferenced copies can be selected; if every copy is in use, point the references at one copy first."
-msgstr "فایل‌هایی با محتوای کاملاً یکسان که چند بار آپلود شده‌اند. اول حجم‌ها مقایسه می‌شوند و فقط فایل‌های هم‌حجم با هش محتوا (MD5) بررسی می‌شوند. پیوست‌هایی که از اول یک فایل مشترک دارند (مثل ترجمه‌های رسانه) تکراری حساب نمی‌شوند. فقط نسخه‌هایی را می‌شود انتخاب کرد که بدون ارجاع‌اند؛ اگر همه‌ی نسخه‌ها استفاده شده‌اند، اول ارجاع‌ها را به یک نسخه تغییر دهید."
-
 msgid "Check again"
 msgstr "بررسی دوباره"
 
@@ -756,3 +753,282 @@ msgstr "آخرین آزمون: از %1$s تا %2$s."
 
 msgid "Choose 1, 6, 24 or 72 hours."
 msgstr "۱، ۶، ۲۴ یا ۷۲ ساعت را انتخاب کنید."
+
+msgid "Replace the other copies"
+msgstr "جایگزینی نسخه‌های دیگر"
+
+msgid "Select the copy to keep first."
+msgstr "اول نسخه‌ای را که می‌ماند انتخاب کنید."
+
+#, php-format
+msgid "Replacing %s…"
+msgstr "در حال جایگزینی %s…"
+
+#, php-format
+msgid "The %s replaced copy(ies) will be deleted permanently, with all their files. This cannot be undone, and neither can the merge. Continue?"
+msgstr "%s نسخه‌ی جایگزین‌شده با همه‌ی فایل‌هایشان برای همیشه حذف می‌شوند. این کار برگشت ندارد و ادغام هم دیگر برگرداندنی نیست. ادامه می‌دهید؟"
+
+msgid "Reload the page"
+msgstr "بارگذاری دوباره‌ی صفحه"
+
+msgid "Purge your page cache and CDN cache now, so visitors get the updated pages. The plugin cannot do that for every caching plugin."
+msgstr "حالا کش صفحه و کش CDN را پاک کنید تا بازدیدکننده‌ها صفحه‌های به‌روز را ببینند. افزونه نمی‌تواند این کار را برای همه‌ی افزونه‌های کش انجام دهد."
+
+msgid "Undo this merge? The replaced copy comes back from quarantine and every value the merge changed (and nobody changed since) is restored."
+msgstr "این ادغام برگردانده شود؟ نسخه‌ی جایگزین‌شده از قرنطینه برمی‌گردد و هر مقداری که ادغام عوض کرده (و از آن به بعد کسی تغییرش نداده) به حالت قبل برمی‌گردد."
+
+#, php-format
+msgid "+%s more"
+msgstr "+%s مورد دیگر"
+
+msgid "post content"
+msgstr "محتوای نوشته‌ها"
+
+msgid "meta"
+msgstr "متاها"
+
+msgid "settings"
+msgstr "تنظیمات"
+
+msgid "terms"
+msgstr "دسته‌ها و برچسب‌ها"
+
+msgid "comments"
+msgstr "دیدگاه‌ها"
+
+msgid "plugin tables"
+msgstr "جدول‌های افزونه‌ها"
+
+msgid "code files"
+msgstr "فایل‌های کد"
+
+msgid "The last scan found a reference to this file, but this search could not locate it (for example inside a plugin table, or in a form the search does not read). A new scan shows whether it is still referenced."
+msgstr "آخرین اسکن ارجاعی به این فایل پیدا کرده، ولی این جست‌وجو نتوانست جایش را پیدا کند (مثلاً داخل جدول یک افزونه، یا به شکلی که این جست‌وجو نمی‌خواند). یک اسکن تازه نشان می‌دهد هنوز ارجاعی هست یا نه."
+
+msgid "The search stopped early (time limit or the first 20 places); there may be more."
+msgstr "جست‌وجو زودتر متوقف شد (محدودیت زمان یا ۲۰ محل اول)؛ ممکن است محل‌های بیشتری باشد."
+
+#, php-format
+msgid "Searched now: %s."
+msgstr "همین حالا جست‌وجو شد: %s."
+
+msgid "The search for the places that use this file did not finish in time, so it cannot be replaced safely."
+msgstr "جست‌وجوی محل‌های استفاده‌ی این فایل به‌موقع تمام نشد، پس نمی‌شود آن را با اطمینان جایگزین کرد."
+
+#, php-format
+msgid "This copy is used in more than %s places; that is more than one merge handles."
+msgstr "این نسخه در بیش از %s محل استفاده شده؛ این بیشتر از ظرفیت یک ادغام است."
+
+#, php-format
+msgid "The values to rewrite take more than %s; that is more than one merge handles."
+msgstr "حجم مقدارهایی که باید بازنویسی شوند بیش از %s است؛ این بیشتر از ظرفیت یک ادغام است."
+
+msgid "The copy to keep is not a media item."
+msgstr "نسخه‌ای که می‌ماند رسانه نیست."
+
+msgid "The copy to keep is quarantined; restore it first."
+msgstr "نسخه‌ای که می‌ماند در قرنطینه است؛ اول آن را برگردانید."
+
+msgid "This is the kept copy itself, or shares its file: there is nothing to replace."
+msgstr "این خود نسخه‌ی ماندنی است یا فایلش را با آن شریک است: چیزی برای جایگزینی نیست."
+
+msgid "This copy is already quarantined."
+msgstr "این نسخه از قبل در قرنطینه است."
+
+#, php-format
+msgid "This copy shares its file with attachment %s; replacing such media is not supported."
+msgstr "این نسخه فایلش را با پیوست %s شریک است؛ جایگزینی چنین رسانه‌ای پشتیبانی نمی‌شود."
+
+msgid "This file is not an extra file of the uploads folder."
+msgstr "این فایل جزو فایل‌های اضافه‌ی پوشه‌ی uploads نیست."
+
+msgid "The two files are not identical (MD5); only exact duplicates can be merged."
+msgstr "این دو فایل یکسان نیستند (MD5)؛ فقط نسخه‌های کاملاً یکسان ادغام می‌شوند."
+
+msgid "A file name contains characters (spaces, quotes, backslashes) that cannot be rewritten safely."
+msgstr "نام یکی از فایل‌ها نویسه‌هایی دارد (فاصله، گیومه، بک‌اسلش) که نمی‌شود با اطمینان بازنویسی کرد."
+
+msgid "You marked this copy as used outside the site (\"Keep\")."
+msgstr "شما این نسخه را «استفاده‌شده بیرون از سایت» علامت زده‌اید («نگه‌داشتن»)."
+
+msgid "References in comments, term descriptions, plugin tables and code files are not rewritten."
+msgstr "ارجاع‌های داخل دیدگاه‌ها، توضیح دسته‌ها، جدول‌های افزونه‌ها و فایل‌های کد بازنویسی نمی‌شوند."
+
+msgid "It links to the attachment page of this copy."
+msgstr "به صفحه‌ی پیوست این نسخه لینک داده است."
+
+msgid "It refers to this copy in a form that cannot be rewritten exactly (for example an id inside a plugin's block or setting, a file the kept copy has no match for, or an encoded URL)."
+msgstr "به شکلی به این نسخه ارجاع داده که نمی‌شود دقیق بازنویسی‌اش کرد (مثلاً شناسه‌ای داخل بلوک یا تنظیمات یک افزونه، فایلی که نسخه‌ی ماندنی معادلش را ندارد، یا آدرس کدگذاری‌شده)."
+
+msgid "Some places cannot be rewritten safely, so nothing was changed. Open the preview to see them."
+msgstr "بعضی محل‌ها را نمی‌شود با اطمینان بازنویسی کرد، پس هیچ چیز تغییر نکرد. پیش‌نمایش را باز کنید تا آن‌ها را ببینید."
+
+msgid "The undo log could not be created, so nothing was changed."
+msgstr "لاگ برگرداندن ساخته نشد، پس هیچ چیز تغییر نکرد."
+
+#, php-format
+msgid "The undo log could not be written, so nothing was changed. Database error: %s"
+msgstr "لاگ برگرداندن نوشته نشد، پس هیچ چیز تغییر نکرد. خطای دیتابیس: %s"
+
+msgid "No such merge."
+msgstr "چنین ادغامی وجود ندارد."
+
+msgid "The undo log was not completed; nothing was changed."
+msgstr "لاگ برگرداندن کامل نشد؛ هیچ چیز تغییر نکرد."
+
+#, php-format
+msgid "%s changed after the preview, so the merge was rolled back. Open the preview again."
+msgstr "%s بعد از پیش‌نمایش تغییر کرده، پس ادغام برگردانده شد. پیش‌نمایش را دوباره باز کنید."
+
+#, php-format
+msgid "%s could not be written, so the merge was rolled back."
+msgstr "%s نوشته نشد، پس ادغام برگردانده شد."
+
+msgid "The check afterwards did not finish in time, so the merge was rolled back."
+msgstr "بررسی پایانی به‌موقع تمام نشد، پس ادغام برگردانده شد."
+
+#, php-format
+msgid "The copy is still used afterwards (%s), so every change was rolled back."
+msgstr "نسخه بعد از ادغام هنوز استفاده می‌شود (%s)، پس همه‌ی تغییرها برگردانده شدند."
+
+msgid "The replaced copy was deleted permanently, so this merge cannot be undone."
+msgstr "نسخه‌ی جایگزین‌شده برای همیشه حذف شده، پس این ادغام برگرداندنی نیست."
+
+msgid "This merge has nothing to undo."
+msgstr "این ادغام چیزی برای برگرداندن ندارد."
+
+msgid "The replaced copy no longer exists, so this merge cannot be undone."
+msgstr "نسخه‌ی جایگزین‌شده دیگر وجود ندارد، پس این ادغام برگرداندنی نیست."
+
+msgid "The replaced copy could not be moved back from quarantine (its original path may be taken), so nothing was changed."
+msgstr "نسخه‌ی جایگزین‌شده از قرنطینه برنگشت (شاید مسیر اصلی‌اش گرفته شده باشد)، پس هیچ چیز تغییر نکرد."
+
+#, php-format
+msgid "Values changed after the merge were left as they are: %s"
+msgstr "مقدارهایی که بعد از ادغام تغییر کرده بودند دست نخوردند: %s"
+
+#, php-format
+msgid "option %s"
+msgstr "گزینه‌ی %s"
+
+#, php-format
+msgid "%1$s #%2$s (%3$s)"
+msgstr "%1$s #%2$s (%3$s)"
+
+msgid "content"
+msgstr "محتوا"
+
+#, php-format
+msgid "References rewritten in %s place(s)."
+msgstr "ارجاع‌ها در %s محل بازنویسی شدند."
+
+msgid "The replaced copy was quarantined."
+msgstr "نسخه‌ی جایگزین‌شده به قرنطینه رفت."
+
+msgid "The replaced copy was deleted permanently."
+msgstr "نسخه‌ی جایگزین‌شده برای همیشه حذف شد."
+
+msgid "The replaced copy could not be moved to quarantine; it is now unreferenced and listed under Unreferenced."
+msgstr "نسخه‌ی جایگزین‌شده به قرنطینه نرفت؛ حالا بدون ارجاع است و در تب «بدون ارجاع» دیده می‌شود."
+
+msgid "The extra file stays on disk; after the next scan finds no reference to it, it can be deleted."
+msgstr "فایل اضافه روی دیسک می‌ماند؛ وقتی اسکن بعدی ارجاعی به آن پیدا نکند، می‌شود حذفش کرد."
+
+msgid "The merge was undone."
+msgstr "ادغام برگردانده شد."
+
+msgid "Interrupted; continue or undo it."
+msgstr "نیمه‌کاره ماند؛ ادامه‌اش دهید یا برش گردانید."
+
+msgid "Keep this copy"
+msgstr "این نسخه بماند"
+
+#, php-format
+msgid "Keep %s"
+msgstr "نگه‌داشتن %s"
+
+msgid "Files with exactly identical content that were uploaded more than once. Sizes are compared first, and only same-size files are checked by content hash (MD5). Attachments that share one file from the start (such as media translations) are not counted as duplicates. Only unreferenced copies can be selected. When copies are in use, choose the copy to keep and replace the others with it: a preview shows every place that will be rewritten, and every merge can be undone."
+msgstr "فایل‌هایی با محتوای کاملاً یکسان که بیش از یک بار آپلود شده‌اند. اول حجم‌ها مقایسه می‌شوند و فقط فایل‌های هم‌حجم با هش محتوا (MD5) بررسی می‌شوند. پیوست‌هایی که از اول یک فایل مشترک دارند (مثل ترجمه‌های رسانه) تکراری حساب نمی‌شوند. فقط نسخه‌های بدون ارجاع قابل انتخاب‌اند. وقتی نسخه‌ها استفاده شده‌اند، نسخه‌ای را که می‌ماند انتخاب کنید و بقیه را با آن جایگزین کنید: پیش‌نمایش همه‌ی محل‌هایی را که بازنویسی می‌شوند نشان می‌دهد و هر ادغام برگرداندنی است."
+
+msgid "Replace the other copies with the selected one…"
+msgstr "جایگزینی نسخه‌های دیگر با نسخه‌ی انتخاب‌شده…"
+
+msgid "Where?"
+msgstr "کجا؟"
+
+msgid "Done"
+msgstr "انجام شد"
+
+msgid "Undone"
+msgstr "برگردانده شد"
+
+msgid "Rolled back"
+msgstr "لغو و برگردانده شد"
+
+msgid "Failed"
+msgstr "ناموفق"
+
+msgid "Interrupted"
+msgstr "نیمه‌کاره"
+
+msgid "Recent merges"
+msgstr "ادغام‌های اخیر"
+
+msgid "Date"
+msgstr "تاریخ"
+
+msgid "Kept copy"
+msgstr "نسخه‌ی ماندنی"
+
+msgid "Replaced copy"
+msgstr "نسخه‌ی جایگزین‌شده"
+
+msgid "Values changed"
+msgstr "مقدارهای تغییرکرده"
+
+msgid "Result"
+msgstr "نتیجه"
+
+msgid "Undo this merge"
+msgstr "برگرداندن این ادغام"
+
+msgid "Cannot be undone: the copy was deleted permanently."
+msgstr "برگرداندنی نیست: نسخه برای همیشه حذف شده است."
+
+msgid "Only the last 50 merges are logged and can be undone. Undo brings the copy back from quarantine and restores every value that has not been changed since."
+msgstr "فقط ۵۰ ادغام آخر ثبت می‌شوند و برگرداندنی‌اند. برگرداندن، نسخه را از قرنطینه برمی‌گرداند و هر مقداری را که از آن به بعد تغییر نکرده به حالت قبل برمی‌گرداند."
+
+msgid "Kept copy:"
+msgstr "نسخه‌ی ماندنی:"
+
+msgid "Will be rewritten to the kept copy:"
+msgstr "این محل‌ها به نسخه‌ی ماندنی بازنویسی می‌شوند:"
+
+#, php-format
+msgid "(%s value(s))"
+msgstr "(%s مقدار)"
+
+msgid "Nothing refers to this copy; it will only be quarantined (or deleted)."
+msgstr "چیزی به این نسخه ارجاع نداده؛ فقط قرنطینه (یا حذف) می‌شود."
+
+msgid "No place to rewrite was found."
+msgstr "محلی برای بازنویسی پیدا نشد."
+
+msgid "Cannot be rewritten safely:"
+msgstr "این محل‌ها را نمی‌شود با اطمینان بازنویسی کرد:"
+
+msgid "This copy will not be replaced. Change these places by hand (see \"Where it is used\"), then open this preview again."
+msgstr "این نسخه جایگزین نمی‌شود. این محل‌ها را دستی تغییر دهید (در «محل‌های استفاده») و بعد این پیش‌نمایش را دوباره باز کنید."
+
+msgid "Delete the replaced copies permanently instead of quarantining them"
+msgstr "نسخه‌های جایگزین‌شده به‌جای قرنطینه، برای همیشه حذف شوند"
+
+msgid "Deleting cannot be undone, and neither can these merges then. In quarantine the old URLs keep working and the merge can be undone."
+msgstr "حذف دائمی برگشت ندارد و این ادغام‌ها هم دیگر برگرداندنی نیستند. در قرنطینه، آدرس‌های قدیمی کار می‌کنند و ادغام برگرداندنی است."
+
+msgid "Only the copies without a refused place are replaced. Every changed value is logged before it is written; a merge can be undone under \"Recent merges\". Extra files are never deleted here. Afterwards, purge your page cache and CDN."
+msgstr "فقط نسخه‌هایی جایگزین می‌شوند که هیچ محل ردشده‌ای ندارند. هر مقدار پیش از تغییر ثبت می‌شود و ادغام را می‌شود در «ادغام‌های اخیر» برگرداند. فایل‌های اضافه این‌جا هرگز حذف نمی‌شوند. بعد از آن، کش صفحه و CDN را پاک کنید."
+
+#, php-format
+msgid "Replace %s copy(ies)"
+msgstr "جایگزینی %s نسخه"

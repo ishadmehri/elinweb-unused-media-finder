@@ -232,6 +232,104 @@ final class CLI
     }
 
     /**
+     * Replaces duplicate copies with one kept copy (merge), or undoes a merge.
+     *
+     * merge: every reference to each duplicate that can be rewritten exactly is pointed at the kept copy (a copy with
+     * any reference that cannot is refused as a whole), then the duplicate is quarantined. Every changed value is
+     * logged first. Without --yes nothing changes: the plan is printed (a dry run).
+     *
+     * ## OPTIONS
+     *
+     * <action>
+     * : merge or undo.
+     *
+     * <ids>...
+     * : merge: the attachment id to keep, then the duplicate copies (attachment ids, or upload-relative paths of extra files). undo: the merge id.
+     *
+     * [--dry-run]
+     * : Only show what would change (also the default without --yes).
+     *
+     * [--delete]
+     * : Delete the replaced copies permanently instead of quarantining them (the merge can then not be undone).
+     *
+     * [--yes]
+     * : Apply it.
+     *
+     * ## EXAMPLES
+     *
+     *     wp elinweb-unused-media-finder duplicates merge 12 34 56
+     *     wp elinweb-unused-media-finder duplicates merge 12 34 --yes
+     *     wp elinweb-unused-media-finder duplicates undo 7 --yes
+     */
+    public function duplicates(array $args, array $assoc): void
+    {
+        $action = (string) array_shift($args);
+        $apply = Utils\get_flag_value($assoc, 'yes', false) && !Utils\get_flag_value($assoc, 'dry-run', false);
+        if ($action === 'undo') {
+            $m = Merge::get((int) ($args[0] ?? 0));
+            if (!$m) {
+                WP_CLI::error('No such merge.');
+            }
+            WP_CLI::log(sprintf('Merge #%d: kept #%d, replaced %s, state %s. %s', $m['id'], $m['keep_id'], $m['dup_id'] ? '#' . $m['dup_id'] : $m['dup_path'], $m['state'], Merge::result($m)['message']));
+            if (!$apply) {
+                WP_CLI::log(Merge::undoable($m) ? 'Dry run: add --yes to undo it.' : 'It cannot be undone.');
+                return;
+            }
+            $r = $this->merge_loop(Merge::undo((int) $m['id']), 'undo');
+            WP_CLI::success($r['message']);
+            return;
+        }
+        if ($action !== 'merge' || count($args) < 2) {
+            WP_CLI::error('Use: duplicates merge <keep_id> <dup>... or duplicates undo <merge_id>.');
+        }
+        $keep = (int) array_shift($args);
+        $failed = 0;
+        foreach ($args as $arg) {
+            $dup = ctype_digit((string) $arg) ? (int) $arg : (string) $arg;
+            $plan = Merge::plan($keep, $dup);
+            WP_CLI::log(sprintf('%s -> #%d', is_int($dup) ? "#$dup" : $dup, $keep));
+            if ($plan['error'] !== '') {
+                WP_CLI::warning($plan['error']);
+                $failed++;
+                continue;
+            }
+            foreach ($plan['changes'] as $ch) {
+                WP_CLI::log(sprintf('  rewrite  %s [%s] %s', Merge::label($ch), $ch['how'], $ch['tbl'] === 'cache' ? '(cache, rebuilt)' : $ch['tbl'] . '.' . $ch['col']));
+            }
+            foreach ($plan['blocked'] as [$ref, $reason]) {
+                WP_CLI::log(sprintf('  REFUSED  %s: %s', Merge::label($ref), $reason));
+            }
+            if ($plan['blocked']) {
+                WP_CLI::warning('Not mergeable: change the refused places by hand, then run this again.');
+                $failed++;
+                continue;
+            }
+            if (!$apply) {
+                WP_CLI::log('  Dry run: add --yes to apply.');
+                continue;
+            }
+            $r = $this->merge_loop(Merge::start($keep, $dup, (bool) Utils\get_flag_value($assoc, 'delete', false)), 'step');
+            WP_CLI::log(sprintf('  merge #%d: %s. %s', $r['merge'], $r['state'], $r['message']));
+            $failed += $r['state'] === 'done' ? 0 : 1;
+        }
+        if ($apply) {
+            WP_CLI::log('Purge the page cache and CDN so visitors get the updated pages.');
+        }
+        $failed ? WP_CLI::error("$failed copy(ies) not merged.") : WP_CLI::success($apply ? 'Merged.' : 'Dry run finished; nothing was changed.');
+    }
+
+    private function merge_loop(array $r, string $do): array
+    {
+        while (empty($r['error']) && empty($r['done'])) {
+            $r = $do === 'undo' ? Merge::undo((int) $r['merge']) : Merge::step((int) $r['merge']);
+        }
+        if (!empty($r['error'])) {
+            WP_CLI::error($r['error']);
+        }
+        return $r;
+    }
+
+    /**
      * Marks media as used outside the site, or (--undo) removes the mark.
      *
      * ## OPTIONS

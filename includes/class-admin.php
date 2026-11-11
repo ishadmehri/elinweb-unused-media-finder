@@ -111,6 +111,15 @@ final class Admin
                 'openTab' =>__('Open in a new tab', 'elinweb-unused-media-finder'),
                 'orphanKept' =>__('Its URL appears somewhere; it is kept', 'elinweb-unused-media-finder'),
                 'more' => __('Show more', 'elinweb-unused-media-finder'),
+                'mergeTitle' => __('Replace the other copies', 'elinweb-unused-media-finder'),
+                'pickKeep' => __('Select the copy to keep first.', 'elinweb-unused-media-finder'),
+                /* translators: %s: attachment id or file path */
+                'merging' => __('Replacing %s…', 'elinweb-unused-media-finder'),
+                /* translators: %s: number of copies */
+                'mergeConfirmDelete' => __('The %s replaced copy(ies) will be deleted permanently, with all their files. This cannot be undone, and neither can the merge. Continue?', 'elinweb-unused-media-finder'),
+                'reload' => __('Reload the page', 'elinweb-unused-media-finder'),
+                'cachePurge' => __('Purge your page cache and CDN cache now, so visitors get the updated pages. The plugin cannot do that for every caching plugin.', 'elinweb-unused-media-finder'),
+                'undoConfirm' => __('Undo this merge? The replaced copy comes back from quarantine and every value the merge changed (and nobody changed since) is restored.', 'elinweb-unused-media-finder'),
                 'probeOk' => __('Requests for quarantined files reach WordPress: visitors are served the file and the request is logged.', 'elinweb-unused-media-finder'),
                 'probeFail' => __('Requests for missing files do not reach WordPress (probably an nginx/LiteSpeed rule for image files, or a CDN). A quarantined file returns a 404 to visitors and no hit is logged. In this setup, quarantine is only a reversible delete.', 'elinweb-unused-media-finder'),
             ],
@@ -151,11 +160,7 @@ final class Admin
         $refs = Scanner::refs($id);
         $status = Scanner::status($id, count($refs));
         $last = Scanner::last();
-        $groups = [];
-        foreach ($refs as $r) {
-            $owned = in_array($r['source_type'], ['post', 'term', 'user', 'comment'], true);
-            $groups[$owned ? $r['source_type'] . '|' . $r['source_id'] : $r['source_type'] . '|' . $r['source_id'] . '|' . $r['source_key']][] = $r;
-        }
+        $groups = self::places($refs);
 
         ob_start();
         ?>
@@ -207,8 +212,68 @@ final class Admin
         return (string) ob_get_clean();
     }
 
+    /** References grouped by place: a post (or term, user, comment) with all its fields is one place, the way counts() counts. */
+    public static function places(array $refs): array
+    {
+        $groups = [];
+        foreach ($refs as $r) {
+            $owned = in_array($r['source_type'], ['post', 'term', 'user', 'comment'], true);
+            $groups[$owned ? $r['source_type'] . '|' . $r['source_id'] : $r['source_type'] . '|' . $r['source_id'] . '|' . $r['source_key']][] = $r;
+        }
+        return array_values($groups);
+    }
+
+    /** Duplicates rows: the first places a copy is used, without opening the dialog; the rest behind "+N more". */
+    public static function inline(int $id, array $refs, int $count): string
+    {
+        $places = array_slice(self::places($refs), 0, 3);
+        if (!$places) {
+            return '';
+        }
+        $out = '<ul class="mtrk-inline">';
+        foreach ($places as $rows) {
+            $out .= '<li>' . self::item($rows) . '</li>';
+        }
+        $more = $count - count($places);
+        /* translators: %s: number of further places */
+        $label = $more > 0 ? sprintf(__('+%s more', 'elinweb-unused-media-finder'), number_format_i18n($more)) : __('Where it is used', 'elinweb-unused-media-finder');
+        return $out . sprintf('</ul><button type="button" class="button-link mtrk-open" data-id="%d" aria-haspopup="dialog">%s</button>', $id, esc_html($label));
+    }
+
+    /** "Where?" of an extra file: the index keeps only a hash of each referenced path, so the places are searched now. */
+    public static function where_html(string $path): string
+    {
+        $found = Scanner::locate($path);
+        $last = Scanner::last() ?: ['code' => false, 'tables' => false];
+        $scope = [__('post content', 'elinweb-unused-media-finder'), __('meta', 'elinweb-unused-media-finder'), __('settings', 'elinweb-unused-media-finder'), __('terms', 'elinweb-unused-media-finder'), __('comments', 'elinweb-unused-media-finder')];
+        if (!empty($last['tables'])) {
+            $scope[] = __('plugin tables', 'elinweb-unused-media-finder');
+        }
+        if (!empty($last['code'])) {
+            $scope[] = __('code files', 'elinweb-unused-media-finder');
+        }
+        ob_start();
+        ?>
+        <p><code dir="ltr"><?php echo esc_html($path); ?></code></p>
+        <?php if ($found['refs']) : ?>
+            <ul class="mtrk-list">
+                <?php foreach (self::places($found['refs']) as $rows) : ?>
+                    <li><?php echo wp_kses(self::item($rows), self::allowed_html()); ?></li>
+                <?php endforeach; ?>
+            </ul>
+        <?php elseif ($found['complete']) : ?>
+            <p><?php esc_html_e('The last scan found a reference to this file, but this search could not locate it (for example inside a plugin table, or in a form the search does not read). A new scan shows whether it is still referenced.', 'elinweb-unused-media-finder'); ?></p>
+        <?php endif; ?>
+        <?php if (!$found['complete']) : ?>
+            <p class="mtrk-note"><?php esc_html_e('The search stopped early (time limit or the first 20 places); there may be more.', 'elinweb-unused-media-finder'); ?></p>
+        <?php endif; ?>
+        <p class="mtrk-note"><?php echo esc_html(sprintf(/* translators: %s: list of places searched */ __('Searched now: %s.', 'elinweb-unused-media-finder'), implode(wp_get_list_item_separator(), $scope))); ?></p>
+        <?php
+        return (string) ob_get_clean();
+    }
+
     /** One line of the modal: the object (post, term, ...) with a link, and the fields that hold the reference. */
-    private static function item(array $rows): string
+    public static function item(array $rows): string
     {
         $type = $rows[0]['source_type'];
         $sid = (int) $rows[0]['source_id'];
@@ -308,7 +373,7 @@ final class Admin
     {
         return [
             'a' => ['href' => true, 'target' => true, 'rel' => true],
-            'strong' => [], 'br' => [], 'code' => ['dir' => true],
+            'strong' => [], 'br' => [], 'code' => ['dir' => true], 'ul' => ['class' => true], 'li' => [],
             'span' => ['class' => true],
             'button' => ['type' => true, 'class' => true, 'data-id' => true, 'data-act' => true, 'aria-haspopup' => true],
         ];

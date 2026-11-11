@@ -21,6 +21,8 @@ final class Page
         add_action('wp_ajax_mtrk_dups', [self::class, 'ajax_dups']);
         add_action('wp_ajax_mtrk_export', [self::class, 'ajax_export']);
         add_action('wp_ajax_mtrk_qtest', [self::class, 'ajax_qtest']);
+        add_action('wp_ajax_mtrk_merge', [self::class, 'ajax_merge']);
+        add_action('wp_ajax_mtrk_where', [self::class, 'ajax_where']);
     }
 
     public static function url(string $tab, array $args = []): string
@@ -276,14 +278,20 @@ final class Page
         <?php
     }
 
-    /** List view: one row per attachment, with its status when $status is set (duplicates). @param array<int,int> $items id => bytes */
-    private static function media_table(array $items, bool $status = false, ?array $pickable = null): void
+    /**
+     * List view: one row per attachment, with its status when $status is set (duplicates).
+     * $dup (duplicates): ['counts' => id => places, 'refs' => id => first references, 'keep' => default kept id, 'group' => n]
+     * adds the first places of use under the status and a "Keep this copy" choice.
+     * @param array<int,int> $items id => bytes
+     */
+    private static function media_table(array $items, bool $status = false, ?array $pickable = null, array $dup = []): void
     {
-        $counts = $status ? Scanner::counts(array_keys($items)) : [];
+        $counts = $dup['counts'] ?? ($status ? Scanner::counts(array_keys($items)) : []);
         ?>
         <table class="widefat striped mtrk-mtable">
             <thead><tr>
                 <td class="check-column"></td>
+                <?php if ($dup) : ?><th scope="col" class="mtrk-col-keep"><?php esc_html_e('Keep this copy', 'elinweb-unused-media-finder'); ?></th><?php endif; ?>
                 <th scope="col" class="mtrk-col-thumb"><span class="screen-reader-text"><?php esc_html_e('Preview', 'elinweb-unused-media-finder'); ?></span></th>
                 <th scope="col"><?php esc_html_e('File', 'elinweb-unused-media-finder'); ?></th>
                 <?php if ($status) : ?><th scope="col"><?php esc_html_e('Status', 'elinweb-unused-media-finder'); ?></th><?php endif; ?>
@@ -306,11 +314,25 @@ final class Page
                             <input type="checkbox" class="mtrk-pick" value="<?php echo (int) $id; ?>" aria-label="<?php echo esc_attr(sprintf(/* translators: %s: file name */ __('Select %s', 'elinweb-unused-media-finder'), $file)); ?>">
                         <?php endif; ?>
                     </th>
+                    <?php if ($dup) : ?>
+                        <td class="mtrk-col-keep">
+                            <?php if (!get_post_meta($id, Cleanup::META, true)) : ?>
+                                <input type="radio" class="mtrk-keep" name="mtrk-keep-<?php echo (int) $dup['group']; ?>" value="<?php echo (int) $id; ?>" <?php checked($id, $dup['keep']); ?> aria-label="<?php echo esc_attr(sprintf(/* translators: %s: file name */ __('Keep %s', 'elinweb-unused-media-finder'), $file)); ?>">
+                            <?php endif; ?>
+                        </td>
+                    <?php endif; ?>
                     <td class="mtrk-col-thumb">
                         <button type="button" class="mtrk-thumb mtrk-preview" data-id="<?php echo (int) $id; ?>" aria-haspopup="dialog" aria-label="<?php echo esc_attr(sprintf(/* translators: %s: file name */ __('Preview %s', 'elinweb-unused-media-finder'), $file)); ?>"><?php echo wp_get_attachment_image($id, [48, 48], true, ['alt' => '', 'loading' => 'lazy']); ?></button>
                     </td>
-                    <td><strong dir="auto"><?php echo esc_html($file); ?></strong><br><bdi class="mtrk-from" dir="ltr"><?php echo esc_html(dirname($path) === '.' ? '/' : dirname($path)); ?></bdi></td>
-                    <?php if ($status) : ?><td><?php echo wp_kses(Admin::badge($id, $counts[$id] ?? 0), Admin::allowed_html()); ?></td><?php endif; ?>
+                    <td><strong dir="auto"><?php echo esc_html($file); ?></strong><br><bdi class="mtrk-from" dir="ltr"><?php echo esc_html(dirname($path) === '.' ? '/' : dirname($path)); ?></bdi> <span class="mtrk-from">#<?php echo (int) $id; ?></span></td>
+                    <?php if ($status) : ?>
+                        <td>
+                            <?php echo wp_kses(Admin::badge($id, $counts[$id] ?? 0), Admin::allowed_html()); ?>
+                            <?php if (!empty($dup['refs'][$id])) : ?>
+                                <?php echo wp_kses(Admin::inline($id, $dup['refs'][$id], $counts[$id] ?? 0), Admin::allowed_html()); ?>
+                            <?php endif; ?>
+                        </td>
+                    <?php endif; ?>
                     <td><?php echo esc_html((string) get_post_mime_type($id)); ?></td>
                     <td><?php echo esc_html(size_format($bytes) ?: '—'); ?></td>
                     <td><?php echo esc_html(get_the_date('', $id)); ?></td>
@@ -328,7 +350,7 @@ final class Page
     {
         $checked = (int) get_option('mtrk_dups_at');
         ?>
-        <p class="description"><?php esc_html_e('Files with exactly identical content that were uploaded more than once. Sizes are compared first, and only same-size files are checked by content hash (MD5). Attachments that share one file from the start (such as media translations) are not counted as duplicates. Only unreferenced copies can be selected; if every copy is in use, point the references at one copy first.', 'elinweb-unused-media-finder'); ?></p>
+        <p class="description"><?php esc_html_e('Files with exactly identical content that were uploaded more than once. Sizes are compared first, and only same-size files are checked by content hash (MD5). Attachments that share one file from the start (such as media translations) are not counted as duplicates. Only unreferenced copies can be selected. When copies are in use, choose the copy to keep and replace the others with it: a preview shows every place that will be rewritten, and every merge can be undone.', 'elinweb-unused-media-finder'); ?></p>
         <div id="mtrk-dups">
             <p>
                 <button type="button" class="button<?php echo $checked ? '' : ' button-primary'; ?> mtrk-dups-check"><?php echo $checked ? esc_html__('Check again', 'elinweb-unused-media-finder') : esc_html__('Check for duplicates', 'elinweb-unused-media-finder'); ?></button>
@@ -343,6 +365,7 @@ final class Page
             <p class="mtrk-dups-status" aria-live="polite"></p>
         </div>
         <?php
+        self::merges_box();
         if (!$checked) {
             return;
         }
@@ -378,10 +401,16 @@ final class Page
         <?php
         $ids = array_merge([], ...array_column($list['groups'], 'ids'));
         $counts = Scanner::counts($ids);
-        foreach ($list['groups'] as $group) {
+        $refs = Scanner::refs_for(array_keys(array_filter($counts))); // one query for the page: the first places of every used copy
+        foreach ($list['groups'] as $n => $group) {
             // Only copies nothing references (and not kept or already quarantined) can be picked.
-            $pickable = array_values(array_filter($group['ids'], fn($id) => empty($counts[$id]) && !get_post_meta($id, Cleanup::META, true)));
+            $quarantined = array_filter($group['ids'], fn($id) => (bool) get_post_meta($id, Cleanup::META, true));
+            $pickable = array_values(array_filter($group['ids'], fn($id) => empty($counts[$id]) && !in_array($id, $quarantined, true)));
             $free_files = array_filter($group['paths'], fn($f) => !$f['kept']);
+            // The copy to keep by default: the most used, then the oldest; never a quarantined one or an extra file.
+            $keepable = array_values(array_diff($group['ids'], $quarantined));
+            usort($keepable, fn($a, $b) => [($counts[$b] ?? 0), $a] <=> [($counts[$a] ?? 0), $b]);
+            $mergeable = $keepable && count($group['ids']) + count($group['paths']) > 1;
             ?>
             <section class="mtrk-dup">
                 <h3><?php echo esc_html(sprintf(/* translators: 1: number of copies, 2: size of one copy */ __('%1$s copies, %2$s each', 'elinweb-unused-media-finder'), number_format_i18n($group['copies']), size_format($group['size']) ?: '—')); ?></h3>
@@ -389,10 +418,13 @@ final class Page
                     <p class="mtrk-note"><?php esc_html_e('Every copy is in use; there is nothing safe to delete.', 'elinweb-unused-media-finder'); ?></p>
                 <?php endif; ?>
                 <?php if ($group['ids']) : ?>
-                    <?php self::media_table(array_fill_keys($group['ids'], $group['size']), true, $pickable); ?>
+                    <?php self::media_table(array_fill_keys($group['ids'], $group['size']), true, $pickable, ['counts' => $counts, 'refs' => $refs, 'keep' => $keepable[0] ?? 0, 'group' => $n]); ?>
                 <?php endif; ?>
                 <?php if ($group['paths']) : ?>
                     <?php self::extra_files_table($group['paths']); ?>
+                <?php endif; ?>
+                <?php if ($mergeable) : ?>
+                    <p><button type="button" class="button mtrk-merge" aria-haspopup="dialog"><?php esc_html_e('Replace the other copies with the selected one…', 'elinweb-unused-media-finder'); ?></button></p>
                 <?php endif; ?>
             </section>
             <?php
@@ -418,13 +450,146 @@ final class Page
                         <code dir="ltr"><?php echo esc_html("$root/$path"); ?></code><br>
                         <button type="button" class="button-link mtrk-xpreview" data-path="<?php echo esc_attr($path); ?>" data-bytes="<?php echo (int) $f['bytes']; ?>" aria-haspopup="dialog"><?php esc_html_e('Preview', 'elinweb-unused-media-finder'); ?></button>
                     </td>
-                    <td><?php echo $f['kept'] ? esc_html__('Its URL appears somewhere; it is kept', 'elinweb-unused-media-finder') : esc_html__('No media item owns this file', 'elinweb-unused-media-finder'); ?></td>
+                    <td>
+                        <?php if ($f['kept']) : ?>
+                            <?php esc_html_e('Its URL appears somewhere; it is kept', 'elinweb-unused-media-finder'); ?>
+                            <button type="button" class="button-link mtrk-where" data-path="<?php echo esc_attr($path); ?>" aria-haspopup="dialog"><?php esc_html_e('Where?', 'elinweb-unused-media-finder'); ?></button>
+                        <?php else : ?>
+                            <?php esc_html_e('No media item owns this file', 'elinweb-unused-media-finder'); ?>
+                        <?php endif; ?>
+                    </td>
                     <td><?php echo esc_html(size_format($f['bytes']) ?: '—'); ?></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>
         </table>
         <?php
+    }
+
+    /** The latest merges, with Undo (and Continue for one that was interrupted). */
+    private static function merges_box(): void
+    {
+        $merges = Merge::recent(20);
+        if (!$merges) {
+            return;
+        }
+        $states = [
+            'done' => __('Done', 'elinweb-unused-media-finder'),
+            'undone' => __('Undone', 'elinweb-unused-media-finder'),
+            'rolledback' => __('Rolled back', 'elinweb-unused-media-finder'),
+            'failed' => __('Failed', 'elinweb-unused-media-finder'),
+            'logging' => __('Failed', 'elinweb-unused-media-finder'),
+            'applying' => __('Interrupted', 'elinweb-unused-media-finder'),
+            'undoing' => __('Interrupted', 'elinweb-unused-media-finder'),
+        ];
+        $open = (bool) array_intersect(array_column($merges, 'state'), ['applying', 'undoing']);
+        $name = fn(int $id) => $id && get_post_type($id) === 'attachment' ? wp_basename((string) get_attached_file($id)) . " #$id" : "#$id";
+        ?>
+        <details class="mtrk-merges"<?php echo $open ? ' open' : ''; ?>>
+            <summary><?php esc_html_e('Recent merges', 'elinweb-unused-media-finder'); ?></summary>
+            <table class="widefat striped">
+                <thead><tr>
+                    <th scope="col"><?php esc_html_e('Date', 'elinweb-unused-media-finder'); ?></th>
+                    <th scope="col"><?php esc_html_e('Kept copy', 'elinweb-unused-media-finder'); ?></th>
+                    <th scope="col"><?php esc_html_e('Replaced copy', 'elinweb-unused-media-finder'); ?></th>
+                    <th scope="col"><?php esc_html_e('Values changed', 'elinweb-unused-media-finder'); ?></th>
+                    <th scope="col"><?php esc_html_e('Result', 'elinweb-unused-media-finder'); ?></th>
+                    <td></td>
+                </tr></thead>
+                <tbody>
+                <?php foreach ($merges as $m) : ?>
+                    <tr>
+                        <td><?php echo esc_html(wp_date(get_option('date_format') . ' H:i', (int) $m['created'])); ?></td>
+                        <td dir="auto"><?php echo esc_html($name((int) $m['keep_id'])); ?></td>
+                        <td dir="auto"><?php echo $m['dup_id'] ? esc_html($name((int) $m['dup_id'])) : '<code dir="ltr">' . esc_html($m['dup_path']) . '</code>'; ?></td>
+                        <td><?php echo esc_html(number_format_i18n((int) $m['n'])); ?></td>
+                        <td><strong><?php echo esc_html($states[$m['state']] ?? $m['state']); ?></strong> <span class="mtrk-note"><?php echo esc_html(Merge::result($m)['message']); ?></span></td>
+                        <td>
+                            <?php if ($m['state'] === 'applying') : ?>
+                                <button type="button" class="button mtrk-merge-step" data-merge="<?php echo (int) $m['id']; ?>"><?php esc_html_e('Continue', 'elinweb-unused-media-finder'); ?></button>
+                            <?php endif; ?>
+                            <?php if (Merge::undoable($m)) : ?>
+                                <button type="button" class="button mtrk-merge-undo" data-merge="<?php echo (int) $m['id']; ?>"><?php esc_html_e('Undo this merge', 'elinweb-unused-media-finder'); ?></button>
+                            <?php elseif ($m['outcome'] === 'deleted') : ?>
+                                <span class="mtrk-note"><?php esc_html_e('Cannot be undone: the copy was deleted permanently.', 'elinweb-unused-media-finder'); ?></span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <p class="description"><?php esc_html_e('Only the last 50 merges are logged and can be undone. Undo brings the copy back from quarantine and restores every value that has not been changed since.', 'elinweb-unused-media-finder'); ?></p>
+        </details>
+        <?php
+    }
+
+    /**
+     * The dry run shown before a merge, computed from the database now: per copy, the places that will be rewritten and
+     * the ones that cannot be. @return array{html: string, items: array} items: the copies that can be replaced
+     */
+    private static function merge_preview(int $keep, array $ids, array $paths): array
+    {
+        $items = [];
+        ob_start();
+        ?>
+        <div class="mtrk-head">
+            <?php echo wp_get_attachment_image($keep, [60, 60], true, ['alt' => '']); ?>
+            <div>
+                <?php esc_html_e('Kept copy:', 'elinweb-unused-media-finder'); ?>
+                <strong dir="auto"><?php echo esc_html(wp_basename((string) get_attached_file($keep)) . " #$keep"); ?></strong>
+            </div>
+        </div>
+        <?php foreach (array_merge($ids, $paths) as $dup) : ?>
+            <?php
+            $plan = Merge::plan($keep, $dup);
+            $rows = [];
+            foreach ($plan['changes'] as $ch) {
+                $rows[] = ['attachment_id' => 0, 'source_type' => $ch['src_type'], 'source_id' => $ch['src_id'], 'source_key' => $ch['src_key'], 'how' => $ch['how']];
+            }
+            $ok = $plan['error'] === '' && !$plan['blocked'];
+            if ($ok) {
+                $items[] = $dup;
+            }
+            ?>
+            <section class="mtrk-merge-copy">
+                <h3 dir="auto"><?php echo is_int($dup) ? esc_html(wp_basename((string) get_attached_file($dup)) . " #$dup") : '<code dir="ltr">' . esc_html($dup) . '</code>'; ?></h3>
+                <?php if ($plan['error'] !== '') : ?>
+                    <p class="mtrk-note"><?php echo esc_html($plan['error']); ?></p>
+                <?php else : ?>
+                    <?php if ($rows) : ?>
+                        <p><?php esc_html_e('Will be rewritten to the kept copy:', 'elinweb-unused-media-finder'); ?></p>
+                        <ul class="mtrk-list">
+                            <?php foreach (Admin::places($rows) as $place) : ?>
+                                <?php $fields = array_values(array_column($place, null, 'source_key')); ?>
+                                <li><?php echo wp_kses(Admin::item($fields), Admin::allowed_html()); ?> <span class="mtrk-note"><?php echo esc_html(sprintf(/* translators: %s: number of values */ __('(%s value(s))', 'elinweb-unused-media-finder'), number_format_i18n(count($place)))); ?></span></li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php elseif (!$plan['blocked']) : ?>
+                        <p><?php echo is_int($dup) ? esc_html__('Nothing refers to this copy; it will only be quarantined (or deleted).', 'elinweb-unused-media-finder') : esc_html__('No place to rewrite was found.', 'elinweb-unused-media-finder'); ?></p>
+                    <?php endif; ?>
+                    <?php if ($plan['blocked']) : ?>
+                        <p><strong><?php esc_html_e('Cannot be rewritten safely:', 'elinweb-unused-media-finder'); ?></strong></p>
+                        <ul class="mtrk-list">
+                            <?php foreach ($plan['blocked'] as [$ref, $reason]) : ?>
+                                <li><?php echo wp_kses(Admin::item([$ref]), Admin::allowed_html()); ?><br><span class="mtrk-note"><?php echo esc_html($reason); ?></span></li>
+                            <?php endforeach; ?>
+                        </ul>
+                        <p class="notice notice-warning inline"><?php esc_html_e('This copy will not be replaced. Change these places by hand (see "Where it is used"), then open this preview again.', 'elinweb-unused-media-finder'); ?></p>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </section>
+        <?php endforeach; ?>
+        <p><label><input type="checkbox" class="mtrk-merge-delete"> <?php esc_html_e('Delete the replaced copies permanently instead of quarantining them', 'elinweb-unused-media-finder'); ?></label></p>
+        <p class="mtrk-merge-warn notice notice-warning inline" hidden><?php esc_html_e('Deleting cannot be undone, and neither can these merges then. In quarantine the old URLs keep working and the merge can be undone.', 'elinweb-unused-media-finder'); ?></p>
+        <p class="description"><?php esc_html_e('Only the copies without a refused place are replaced. Every changed value is logged before it is written; a merge can be undone under "Recent merges". Extra files are never deleted here. Afterwards, purge your page cache and CDN.', 'elinweb-unused-media-finder'); ?></p>
+        <p>
+            <button type="button" class="button button-primary mtrk-merge-go" data-keep="<?php echo (int) $keep; ?>" data-items="<?php echo esc_attr((string) wp_json_encode($items)); ?>"<?php disabled(!$items); ?>>
+                <?php echo esc_html(sprintf(/* translators: %s: number of copies */ __('Replace %s copy(ies)', 'elinweb-unused-media-finder'), number_format_i18n(count($items)))); ?>
+            </button>
+        </p>
+        <div class="mtrk-merge-result" aria-live="polite"></div>
+        <?php
+        return ['html' => (string) ob_get_clean(), 'items' => $items];
     }
 
     // ---- quarantine ------------------------------------------------------------------------------------------
@@ -921,6 +1086,43 @@ final class Page
                 wp_send_json_error(__('Invalid request.', 'elinweb-unused-media-finder'), 400);
         }
         wp_send_json_success(['done' => $done, 'bytes' => $bytes]);
+    }
+
+    /** Merge in a duplicate group: preview (dry run), run and step (apply in budgeted requests), undo. */
+    public static function ajax_merge(): void
+    {
+        Admin::guard(check_ajax_referer('mtrk', false, false));
+        $do = sanitize_key(wp_unslash($_POST['do'] ?? ''));
+        $keep = absint($_POST['keep'] ?? 0);
+        $merge = absint($_POST['merge'] ?? 0);
+        // Extra files: a path is only used after Orphans::is_extra() found it in a fresh listing of its folder.
+        $paths = array_map(fn($p) => (string) $p, (array) wp_unslash($_POST['paths'] ?? [])); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- compared with a fresh listing of the folder, never used as given
+        if ($do === 'preview') {
+            $ids = array_values(array_filter(array_map('absint', (array) wp_unslash($_POST['ids'] ?? []))));
+            wp_send_json_success(self::merge_preview($keep, $ids, $paths));
+        }
+        if ($do === 'run') {
+            $id = absint($_POST['id'] ?? 0);
+            $r = Merge::start($keep, $id ?: ($paths[0] ?? ''), !empty($_POST['delete']));
+        } elseif ($do === 'step') {
+            $r = Merge::step($merge);
+        } elseif ($do === 'undo') {
+            $r = Merge::undo($merge);
+        } else {
+            wp_send_json_error(__('Invalid request.', 'elinweb-unused-media-finder'), 400);
+        }
+        isset($r['error']) ? wp_send_json_error($r['error'], 409) : wp_send_json_success($r);
+    }
+
+    /** "Where?" for an extra file whose URL appears somewhere. */
+    public static function ajax_where(): void
+    {
+        Admin::guard(check_ajax_referer('mtrk', false, false));
+        $path = (string) wp_unslash($_POST['path'] ?? ''); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- compared with a fresh listing of its folder before use, escaped on output
+        if (!Orphans::is_extra($path)) {
+            wp_send_json_error(__('This file is not an extra file of the uploads folder.', 'elinweb-unused-media-finder'), 404);
+        }
+        wp_send_json_success(['html' => Admin::where_html($path), 'title' => __('Where it is used', 'elinweb-unused-media-finder')]);
     }
 
     public static function ajax_preview(): void

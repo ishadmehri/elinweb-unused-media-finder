@@ -39,8 +39,9 @@ require_once __DIR__ . '/includes/class-cleanup.php';
         }
     }
 
+    // The merge undo log goes too: a replaced copy that was quarantined has just been restored above, so it is not lost.
     // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- dropping the plugin's own tables on uninstall
-    $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}mtrk_refs, {$wpdb->prefix}mtrk_paths, {$wpdb->prefix}mtrk_files, {$wpdb->prefix}mtrk_hashes, {$wpdb->prefix}mtrk_xhashes");
+    $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}mtrk_refs, {$wpdb->prefix}mtrk_paths, {$wpdb->prefix}mtrk_files, {$wpdb->prefix}mtrk_hashes, {$wpdb->prefix}mtrk_xhashes, {$wpdb->prefix}mtrk_merges, {$wpdb->prefix}mtrk_merge_rows");
     foreach (['mtrk_job', 'mtrk_last_scan', 'mtrk_files', 'mtrk_lock', 'mtrk_db', 'mtrk_files_ready', 'mtrk_dups_at', 'mtrk_dups_run', 'mtrk_dups_x', 'mtrk_quarantine', 'mtrk_quarantine_dir', 'mtrk_q_test'] as $option) {
         delete_option($option);
     }

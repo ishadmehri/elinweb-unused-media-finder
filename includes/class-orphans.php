@@ -53,6 +53,12 @@ final class Orphans
         return $out;
     }
 
+    /** Whether a fresh look at its folder lists this upload-relative path as an extra file (kept or not). */
+    public static function is_extra(string $path): bool
+    {
+        return $path !== '' && isset(self::listed([$path], false)[$path]);
+    }
+
     /**
      * The given upload-relative paths that a fresh look at their folder still lists (so they are real extra files),
      * with their sizes. A path from the browser is never trusted on its own.

@@ -442,10 +442,129 @@ final class Scanner
         return $id > $last['max_id'] ? 'new' : 'unused';
     }
 
-    public static function refs(int $id): array
+    public static function refs(int $id, int $limit = 500): array
     {
         global $wpdb;
-        return $wpdb->get_results($wpdb->prepare('SELECT attachment_id, source_type, source_id, source_key, how FROM ' . self::table() . ' WHERE attachment_id = %d ORDER BY source_type, source_id, source_key LIMIT 500', $id), ARRAY_A);
+        return $wpdb->get_results($wpdb->prepare('SELECT attachment_id, source_type, source_id, source_key, how FROM ' . self::table() . ' WHERE attachment_id = %d ORDER BY source_type, source_id, source_key LIMIT %d', $id, $limit), ARRAY_A);
+    }
+
+    /**
+     * The first $per references of each attachment, for a whole page of rows in one query (one indexed branch per id).
+     * @return array<int,array[]> attachment id => rows shaped like refs()
+     */
+    public static function refs_for(array $ids, int $per = 8): array
+    {
+        global $wpdb;
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        if (!$ids) {
+            return [];
+        }
+        $table = self::table();
+        $per = max(1, $per);
+        $parts = array_map(fn($id) => "(SELECT attachment_id, source_type, source_id, source_key, how FROM $table WHERE attachment_id = $id ORDER BY source_type, source_id, source_key LIMIT $per)", $ids);
+        $out = [];
+        foreach ($wpdb->get_results(implode(' UNION ALL ', $parts), ARRAY_A) as $r) {
+            $out[(int) $r['attachment_id']][] = $r;
+        }
+        return $out;
+    }
+
+    /**
+     * Where a scan would find this upload path (an extra file), searched now: the index keeps only a hash of each
+     * referenced path, not its place. Same sources, filters and URL forms as a full scan within the last scan's
+     * scope (plugin tables and code files only when it read them). Stops after $budget seconds or $limit places.
+     * @return array{refs: array[], complete: bool} refs shaped like refs(), attachment_id 0 and how 'url'
+     */
+    public static function locate(string $path, int $limit = 20, int $budget = self::BUDGET): array
+    {
+        global $wpdb;
+        $scanner = new self();
+        $stem = self::stem($path);
+        $name = (string) preg_replace('/(\.[a-z0-9]{2,5}){1,2}$/i', '', wp_basename($path));
+        // How the name can be written: as is, URL-encoded, \u-escaped in JSON. LIKE only narrows; stems() decides.
+        $terms = array_unique([$name, rawurlencode($name), substr((string) wp_json_encode($name), 1, -1)]);
+        $deadline = microtime(true) + $budget;
+        $last = self::last() ?: ['code' => false, 'tables' => false];
+        $skip = apply_filters('mtrk_skip_options', self::LOG_OPTIONS);
+        $out = [];
+        $complete = true;
+
+        // One source: rows whose columns mention the name, then the exact check. $key(row, column) names the place.
+        $search = function (string $table, string $pk, string $select, array $cols, string $where, string $type, callable $key) use ($wpdb, $scanner, $stem, $terms, $deadline, $limit, $skip, &$out, &$complete): bool {
+            $like = [];
+            foreach ($cols as $c) {
+                foreach ($terms as $t) {
+                    $like[] = $wpdb->prepare("t.`$c` LIKE %s", '%' . $wpdb->esc_like($t) . '%');
+                }
+            }
+            $list = implode(', ', array_map(fn($c) => "t.`$c`", $cols));
+            $cursor = 0;
+            do {
+                if (microtime(true) > $deadline || count($out) >= $limit) {
+                    $complete = false;
+                    return false;
+                }
+                $rows = $pk === ''
+                    ? $wpdb->get_results("SELECT 0 AS pk, $list FROM `$table` t WHERE (" . implode(' OR ', $like) . ") $where LIMIT 1000", ARRAY_A)
+                    : $wpdb->get_results("SELECT t.`$pk` AS pk, $select$list FROM `$table` t WHERE t.`$pk` > $cursor AND (" . implode(' OR ', $like) . ") $where ORDER BY t.`$pk` LIMIT 200", ARRAY_A);
+                foreach ($rows as $r) {
+                    $cursor = (int) $r['pk'];
+                    if ($type === 'option' && preg_match($skip, $r['k'])) {
+                        continue;
+                    }
+                    foreach ($cols as $c) {
+                        if (in_array($stem, $scanner->stems((string) $r[$c]), true)) {
+                            $k = $key($r, $c);
+                            $sid = (int) ($r['sid'] ?? $r['pk']);
+                            $out["$type|$sid|$k"] = ['attachment_id' => 0, 'source_type' => $type, 'source_id' => $sid, 'source_key' => $k, 'how' => 'url'];
+                        }
+                    }
+                }
+                if ($pk === '' && count($rows) === 1000) {
+                    $complete = false; // a keyless table with this many matches: not read to the end
+                }
+            } while ($pk !== '' && count($rows) === 200);
+            return true;
+        };
+
+        $none = fn() => '';
+        $search($wpdb->posts, 'ID', '', ['post_content', 'post_excerpt'], "AND t.post_type NOT IN ('revision', 'attachment') AND t.post_type NOT REGEXP '" . self::LOG_TYPES . "' AND t.post_status <> 'auto-draft'", 'post', $none);
+        foreach (self::META as $meta => [$type, $owner, $pk]) {
+            $where = 'AND t.meta_key NOT IN (' . self::SKIP_META . ')';
+            if ($meta === 'postmeta') {
+                $where .= " AND NOT EXISTS (SELECT 1 FROM $wpdb->posts p WHERE p.ID = t.post_id AND (p.post_type = 'revision' OR p.post_type REGEXP '" . self::LOG_TYPES . "'))";
+            }
+            $search($wpdb->$meta, $pk, "t.`$owner` AS sid, t.meta_key AS k, ", ['meta_value'], $where, $type, fn($r) => (string) $r['k']);
+        }
+        $search($wpdb->options, 'option_id', '0 AS sid, t.option_name AS k, ', ['option_value'], "AND t.option_name NOT LIKE '%\\_transient\\_%' AND t.option_name NOT LIKE 'mtrk\\_%'", 'option', fn($r) => (string) $r['k']);
+        $search($wpdb->term_taxonomy, 'term_taxonomy_id', 't.term_id AS sid, ', ['description'], '', 'term', fn() => 'description');
+        $search($wpdb->comments, 'comment_ID', '', ['comment_content'], '', 'comment', $none);
+        if (!empty($last['tables'])) {
+            foreach (self::extra_tables() as $table) {
+                $cfg = self::discover($table);
+                if ($cfg) {
+                    $search($table, (string) $cfg[1], '', $cfg[3], '', 'table', fn($r, $c) => "$table.$c");
+                }
+            }
+        }
+        if (!empty($last['code'])) {
+            $root = wp_normalize_path(WP_CONTENT_DIR) . '/';
+            foreach (self::code_files() as $file) {
+                if (microtime(true) > $deadline || count($out) >= $limit) {
+                    $complete = false;
+                    break;
+                }
+                if (@filesize($file) > self::MAX_FILE || ($text = @file_get_contents($file)) === false) {
+                    continue;
+                }
+                $mentions = array_filter($terms, fn($t) => stripos($text, $t) !== false);
+                if ($mentions && in_array($stem, $scanner->stems($text), true)) {
+                    $k = str_replace($root, '', $file);
+                    $out["file|0|$k"] = ['attachment_id' => 0, 'source_type' => 'file', 'source_id' => 0, 'source_key' => $k, 'how' => 'url'];
+                }
+            }
+        }
+        return ['refs' => array_slice(array_values($out), 0, $limit), 'complete' => $complete];
     }
 
     public static function summary(): array
@@ -823,6 +942,36 @@ final class Scanner
         return array_keys($paths);
     }
 
+    /** @return string[] the stem of every upload path in this text, read the way a scan reads it */
+    public function stems(string $text): array
+    {
+        return array_values(array_unique(array_map([self::class, 'stem'], $this->paths_in($text))));
+    }
+
+    /**
+     * What a scan reads in one value: attachment id => 'url'|'id'. $source: 'post' (content or excerpt), a meta
+     * table ('postmeta', 'termmeta', 'usermeta', 'commentmeta') or 'option'; $sid owns the value (meta only).
+     * Merge uses it to prove that a rewritten value names the kept copy and nothing else changed.
+     */
+    public function found(string $source, string $value, string $key = '', int $sid = 0): array
+    {
+        global $wpdb;
+        if ($source === 'post') {
+            return $this->in_text($value) + $this->in_content($value);
+        }
+        $row = [['sid' => $sid, 'k' => $key, 'v' => $value]];
+        if ($source === 'option') {
+            $ids = $this->in_serialized($value);
+            if (in_array($key, self::ID_OPTIONS, true)) {
+                $ids[] = $value;
+            }
+            $field = array_key_exists($key, $this->option_keys) ? $this->only($this->media_ids($value, $this->option_keys[$key])) : [];
+            return $this->in_text($value) + $this->only($ids) + ($this->acf_ids($wpdb->options, '', 'option_name', 'option_value', $row)[0] ?? []) + $field;
+        }
+        $field = array_key_exists($key, $this->media_keys) ? $this->only($this->media_ids($value, $this->media_keys[$key])) : [];
+        return $this->in_text($value) + $this->in_meta($key, $value) + ($this->acf_ids($wpdb->$source, self::META[$source][1], 'meta_key', 'meta_value', $row)[0] ?? []) + $field;
+    }
+
     /** Resolves every path in a batch of rows with one query instead of one per path. */
     private function prefetch(array $rows): void
     {
@@ -1194,13 +1343,14 @@ final class Scanner
     private static function extra_tables(): array
     {
         global $wpdb;
-        $core = array_merge(array_values($wpdb->tables('all')), [self::table()]);
+        $core = array_values($wpdb->tables('all'));
+        $own = $wpdb->prefix . 'mtrk_'; // this plugin's tables (index, extra files list, merge log) name paths without using them
         // Logs, sessions, caches and indexes derived from content: they mention files without using them.
         $skip = apply_filters('mtrk_skip_tables', '/_(log|logs|sessions|cache)$|actionscheduler_|wc_admin_|_lookup$|_stats$|simple_history|rank_math_internal_links$|yoast_(indexable|seo_)/i');
         $out = [];
         foreach ($wpdb->get_col($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($wpdb->prefix) . '%')) as $t) {
             $other_site = is_multisite() && preg_match('/^' . preg_quote($wpdb->base_prefix, '/') . '\d+_/', $t) && $wpdb->prefix === $wpdb->base_prefix;
-            if (!in_array($t, $core, true) && !preg_match($skip, $t) && !$other_site) {
+            if (!in_array($t, $core, true) && strpos($t, $own) !== 0 && !preg_match($skip, $t) && !$other_site) {
                 $out[] = $t;
             }
         }

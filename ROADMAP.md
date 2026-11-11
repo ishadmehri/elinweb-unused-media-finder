@@ -22,6 +22,7 @@ Ideas and open work, not promises. Move an item to the changelog in `readme.txt`
 
 ## Ideas, not decided / ایده‌های تصمیم‌نگرفته
 
-- A button on the Duplicates tab to point every reference at one copy, so duplicates can be deleted when all copies are in use. / دکمه‌ی انتقال ارجاع‌ها به یک نسخه در تب تکراری‌ها.
-- Pick "all but one" copy in each duplicate group automatically, and a `wp elinweb-unused-media-finder duplicates` command. / انتخاب خودکار «همه به‌جز یکی» در هر گروه تکراری و دستور WP-CLI برای تکراری‌ها.
+- Merge (shipped in 0.11.0) for the references it refuses today: ACF/SCF gallery fields, Pods file fields (meta plus the `_pods_` list), Meta Box groups and clones, JetEngine id+URL values and repeaters, plugin block attributes, Elementor dynamic tags and V4 atomic images, comments, term descriptions, plugin tables; URLs of old sizes, WebP/AVIF copies and CDN URLs without the uploads path. Each needs its storage format proven, like the supported ones. / ادغام برای ارجاع‌هایی که فعلاً رد می‌شوند: گالری ACF، فیلد فایل Pods، گروه‌های Meta Box، مقادیر و تکرارشونده‌های JetEngine، ویژگی بلوک افزونه‌ها، تگ پویای المنتور و V4، دیدگاه‌ها، توضیح دسته‌ها، جدول افزونه‌ها؛ آدرس سایزهای قدیمی، WebP/AVIF و CDN.
+- Merge every group in one go ("keep the most used copy everywhere"), with one preview for all. / ادغام همه‌ی گروه‌ها با یک پیش‌نمایش.
+- Pick "all but one" copy in each duplicate group automatically. / انتخاب خودکار «همه به‌جز یکی» در هر گروه تکراری.
 - Warn before selecting every copy of a duplicate group. / هشدار قبل از انتخاب همه‌ی نسخه‌های یک گروه تکراری.

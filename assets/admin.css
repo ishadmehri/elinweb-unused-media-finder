@@ -158,3 +158,16 @@ button.mtrk-badge:focus-visible { outline: 2px solid #2271b1; outline-offset: 1p
 .mtrk-export { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .mtrk-export .description { flex-basis: 100%; }
 .mtrk-sizes-table td, .mtrk-sizes-table th { vertical-align: middle; }
+
+/* Duplicates: where each copy is used, keep/replace, recent merges */
+.mtrk-mtable button.mtrk-badge { text-decoration: underline dotted; text-underline-offset: 3px; }
+.mtrk-inline { margin: 6px 0 2px; font-size: 12px; line-height: 1.4; }
+.mtrk-inline li { margin: 0 0 4px; }
+.mtrk-inline .mtrk-meta { font-size: 11px; }
+.mtrk-mtable .mtrk-col-keep { width: 6em; text-align: center; }
+.mtrk-merges { max-width: 1100px; margin: 12px 0 16px; padding: 4px 12px 8px; background: #fff; border: 1px solid #dcdcde; border-radius: 6px; }
+.mtrk-merges summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+.mtrk-merges td { vertical-align: middle; }
+.mtrk-merge-copy { margin: 12px 0; padding-top: 8px; border-top: 1px solid #f0f0f1; }
+.mtrk-merge-copy h3 { margin: 0 0 6px; font-size: 14px; }
+.mtrk-merge-result .mtrk-list li { padding: 6px 0; }
