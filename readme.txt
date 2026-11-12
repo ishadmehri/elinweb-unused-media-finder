@@ -85,6 +85,8 @@ Only places the last scan recorded, and only these forms. The files are identica
 
 Not rewritten (the copy is then not replaced; change these places by hand and run the preview again): comments, term descriptions, plugin tables, theme and plugin code; ids inside structures without the copy's URL next to them (ACF gallery fields, Pods file fields, which also keep the id in a separate list, Meta Box groups, JetEngine id+URL values and repeaters, plugin block attributes, Elementor dynamic tags and V4 images); URLs of old sizes no longer in the metadata, WebP/AVIF copies, edited versions, CDN URLs without the uploads path, and other encodings; links to the copy's attachment page; copies that share their file with another media item; a copy you marked "Keep". A page cache or CDN must be purged by you afterwards.
 
+For an extra file (a stray copy on disk), the merge searches the database only (content, meta, settings, terms, comments and, when the last scan read them, plugin tables), not theme or plugin code: reading every code file takes too long for one request. This cannot break anything, because a merge never moves or deletes an extra file; it only stops being "kept" when a later full scan, which reads code if you choose it, finds no reference to it.
+
 = A file is listed as used but I know it is not. =
 
 Open "Where it is used". Tables of plugins you removed long ago and caches (for example Yoast's indexable tables) can mention a file without using it. Logs and well-known caches are skipped; if you find another one, please report it.

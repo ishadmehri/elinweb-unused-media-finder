@@ -97,7 +97,10 @@ final class Merge
         if (is_int($dup)) {
             $refs = Scanner::refs($dup, self::MAX_REFS + 1);
         } else {
-            $found = Scanner::locate($dup, self::MAX_REFS + 1);
+            // Without code files: reading them all can outlast the time budget, and they would only refuse the copy.
+            // Skipping them is safe because a merge never moves or deletes an extra file, and it stays "kept" until a
+            // full scan (which reads code when its scope does) finds no reference to it.
+            $found = Scanner::locate($dup, self::MAX_REFS + 1, Scanner::BUDGET, false);
             $refs = $found['refs'];
             if (!$found['complete'] && count($refs) <= self::MAX_REFS) {
                 $out['error'] = __('The search for the places that use this file did not finish in time, so it cannot be replaced safely.', 'elinweb-unused-media-finder');
@@ -633,7 +636,7 @@ final class Merge
         if ($m['dup_id']) {
             $left = Scanner::refs((int) $m['dup_id'], 20);
         } else {
-            $found = Scanner::locate($m['dup_path'], 20);
+            $found = Scanner::locate($m['dup_path'], 20, Scanner::BUDGET, false); // the places plan() searched
             $left = $found['refs'];
             if (!$found['complete'] && !$left) {
                 return self::rollback($m, __('The check afterwards did not finish in time, so the merge was rolled back.', 'elinweb-unused-media-finder'));

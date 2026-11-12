@@ -30,6 +30,40 @@ $is = function (bool $ok, string $what) use (&$fail): void {
 $dir = wp_upload_dir()['basedir'] . '/2026/10';
 $base = wp_upload_dir()['baseurl'];
 $admin = get_current_user_id();
+
+// Start clean: whatever a run that died before its cleanup left, found by this suite's exact fixture names.
+$stale_media = array_map('intval', $wpdb->get_col("SELECT post_id FROM $wpdb->postmeta WHERE meta_key = '_wp_attached_file' AND meta_value LIKE '2026/10/mtrk-mg-%'"));
+$stale_posts = array_map('intval', $wpdb->get_col("SELECT ID FROM $wpdb->posts WHERE post_title = 'mtrk merge' AND post_type = 'post'"));
+if ($stale_media &&$wpdb->get_var("SHOW TABLES LIKE '" . Merge::table() . "'")) {
+    $list = implode(',', $stale_media);
+    $wpdb->query('DELETE FROM ' . Merge::rows_table() . ' WHERE merge_id IN (SELECT id FROM ' . Merge::table() . " WHERE keep_id IN ($list) OR dup_id IN ($list))");
+    $wpdb->query('DELETE FROM ' . Merge::table() . " WHERE keep_id IN ($list) OR dup_id IN ($list)");
+}
+foreach ($stale_posts as $id) {
+    foreach (get_comments(['post_id' => $id, 'fields' => 'ids']) as $c) {
+        wp_delete_comment($c, true);
+    }
+    foreach (wp_get_post_revisions($id) as $rev) {
+        wp_delete_post($rev->ID, true);
+    }
+    @unlink(wp_upload_dir()['basedir'] . "/elementor/css/post-$id.css");
+}
+foreach (array_merge($stale_posts, $stale_media) as $id) {
+    wp_delete_post($id, true); // a quarantined one takes its quarantined files with it
+}
+foreach (glob("$dir/mtrk-mg-*") ?: [] as $f) {
+    unlink($f);
+}
+foreach ($wpdb->get_col("SELECT term_id FROM $wpdb->terms WHERE name LIKE 'mtrk merge term %'") as $t) {
+    wp_delete_term((int) $t, 'product_cat');
+    wp_delete_term((int) $t, 'category');
+}
+delete_user_meta($admin, 'mtrk_mg_avatar');
+delete_option('mtrkt_mg_widget');
+delete_option('theme_mods_mtrkt');
+if ($stale_posts || $stale_media) {
+    printf("cleaned leftovers of an earlier run: %d posts, %d media\n", count($stale_posts), count($stale_media));
+}
 $saved_test = get_option(Cleanup::TEST);
 
 add_filter('wp_doing_ajax', '__return_true');
@@ -141,6 +175,15 @@ $css = wp_upload_dir()['basedir'] . "/elementor/css/post-$p3.css";
 wp_mkdir_p(dirname($css));
 file_put_contents($css, '.x{background:url(' . $file('mtrk-mg-d.jpg') . ')}');
 
+// Publishing queues pings and enclosures (_pingme, _encloseme) for WordPress's do_pings cron job, which deletes that
+// meta whenever any request to the site runs cron, at a random moment of this suite. Without this the byte-for-byte
+// snapshots below compare a value the merge never touched and fail now and then. Removing the queue from our own
+// fixtures keeps every compared row stable; nothing else is excluded from the snapshots.
+foreach ($made as $id) {
+    delete_post_meta($id, '_encloseme');
+    delete_post_meta($id, '_pingme');
+}
+
 // Everything a merge could touch, raw from the database.
 $snapshot = function () use ($wpdb, &$made, $term, $admin, $comment, $k): array {
     $ids = implode(',', array_map('intval', $made));
@@ -153,6 +196,26 @@ $snapshot = function () use ($wpdb, &$made, $term, $admin, $comment, $k): array 
         'comment' => $wpdb->get_var($wpdb->prepare("SELECT comment_content FROM $wpdb->comments WHERE comment_ID = %d", $comment)),
         'keep' => $wpdb->get_results($wpdb->prepare("SELECT meta_key, meta_value FROM $wpdb->postmeta WHERE post_id = %d ORDER BY meta_id", $k), ARRAY_A),
     ];
+};
+// On a failed comparison: which part, which row, and the actual vs expected value.
+$diff = function (array $now, array $want): void {
+    foreach ($want as $part => $rows) {
+        if (($now[$part] ?? null) === $rows) {
+            continue;
+        }
+        if (!is_array($rows)) {
+            echo "  differs: $part\n    actual:   " . var_export($now[$part] ?? null, true) . "\n    expected: " . var_export($rows, true) . "\n";
+            continue;
+        }
+        $n = count(max($rows, (array) ($now[$part] ?? [])));
+        for ($i = 0; $i < max(count($rows), count((array) ($now[$part] ?? []))); $i++) {
+            $a = $now[$part][$i] ?? null;
+            $b = $rows[$i] ?? null;
+            if ($a !== $b) {
+                echo "  differs: $part row $i\n    actual:   " . substr(var_export($a, true), 0, 900) . "\n    expected: " . substr(var_export($b, true), 0, 900) . "\n";
+            }
+        }
+    }
 };
 $raw = fn(int $post, string $key) => $wpdb->get_var($wpdb->prepare("SELECT meta_value FROM $wpdb->postmeta WHERE post_id = %d AND meta_key = %s", $post, $key));
 $merge_d = 0;
@@ -232,12 +295,8 @@ try {
     $restored = $snapshot();
     $is($restored === $before, 'undo: every other value is back byte for byte');
     if ($restored !== $before) {
-        foreach ($before as $part => $rows) {
-            if ($restored[$part] !== $rows) {
-                echo "  differs: $part\n";
-                var_dump(array_udiff((array) $restored[$part], (array) $rows, fn($x, $y) => $x <=> $y));
-            }
-        }
+        $diff($restored, $before);
+        echo '  undo result: ' . var_export($r, true) . "\n";
     }
     $is(file_exists("$dir/mtrk-mg-d.jpg") && !get_post_meta($d, Cleanup::META, true), 'undo: D is back from quarantine');
     $is(!empty(Merge::undo($merge_d)['error']), 'undo: a second undo is refused');
@@ -251,8 +310,12 @@ try {
     // An extra file, referenced by URL only.
     $r = $run($k, '2026/10/mtrk-mg-x.jpg');
     $is(($r['state'] ?? '') === 'done' && $r['outcome'] === 'left' && file_exists("$dir/mtrk-mg-x.jpg"), 'extra: merged, the file stays on disk');
+    if (($r['state'] ?? '') !== 'done') {
+        echo '  extra merge result: ' . var_export($r, true) . "\n  plan: " . var_export(Merge::plan($k, '2026/10/mtrk-mg-x.jpg'), true) . "\n";
+    }
     $is($wpdb->get_var($wpdb->prepare("SELECT post_content FROM $wpdb->posts WHERE ID = %d", $p5)) === '<img src="' . $file('mtrk-mg-k.jpg') . '"> and <img src="' . $file('mtrk-mg-x10.jpg') . '">', 'extra: its URL points at K, the look-alike x10 kept');
-    $is(Scanner::locate('2026/10/mtrk-mg-x.jpg')['refs'] === [], 'extra: no reference left');
+    $left = Scanner::locate('2026/10/mtrk-mg-x.jpg', 20, Scanner::BUDGET, false);
+    $is($left['refs'] === [] && $left['complete'], 'extra: no reference left');
     $is(!empty(Merge::plan($k, '2026/10/mtrk-mg-k.jpg')['error']) && !empty(Merge::plan($k, '../../wp-config.php')['error']), 'extra: a library file or a path outside uploads is refused');
 
     // The handler.

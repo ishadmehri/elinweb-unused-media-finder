@@ -24,7 +24,7 @@ final class Scanner
     private const LOCK = 'mtrk_lock';
     private const ROWS = 300;                // rows per batch
     private const BYTES = 8 * MB_IN_BYTES;   // ...and at most this much text, so page-builder JSON can't exhaust memory
-    private const BUDGET = 8;                // seconds of work per AJAX request
+    public const BUDGET = 8;                 // seconds of work per AJAX request
     private const MAX_FILE = MB_IN_BYTES;
     private const CODE_EXT = '/\.(php|css|js|json|html?|twig|scss|less)$/i';
     private const SKIP_DIRS = ['node_modules', 'vendor', '.git'];
@@ -473,9 +473,10 @@ final class Scanner
      * Where a scan would find this upload path (an extra file), searched now: the index keeps only a hash of each
      * referenced path, not its place. Same sources, filters and URL forms as a full scan within the last scan's
      * scope (plugin tables and code files only when it read them). Stops after $budget seconds or $limit places.
+     * $code = false leaves code files out: reading every theme and plugin file is the slow part.
      * @return array{refs: array[], complete: bool} refs shaped like refs(), attachment_id 0 and how 'url'
      */
-    public static function locate(string $path, int $limit = 20, int $budget = self::BUDGET): array
+    public static function locate(string $path, int $limit = 20, int $budget = self::BUDGET, bool $code = true): array
     {
         global $wpdb;
         $scanner = new self();
@@ -547,7 +548,7 @@ final class Scanner
                 }
             }
         }
-        if (!empty($last['code'])) {
+        if ($code && !empty($last['code'])) {
             $root = wp_normalize_path(WP_CONTENT_DIR) . '/';
             foreach (self::code_files() as $file) {
                 if (microtime(true) > $deadline || count($out) >= $limit) {
